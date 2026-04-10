@@ -23,6 +23,19 @@ def _to_local_date(dt) -> str:
     return str(dt)[:10]
 
 
+def _to_float(value) -> float:
+    """Convert any numeric type (including MongoDB Decimal128) to float."""
+    if value is None:
+        return 0.0
+    try:
+        # Decimal128 from pymongo has a .to_decimal() method
+        if hasattr(value, 'to_decimal'):
+            return float(value.to_decimal())
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def recompute_fee(amount: float, msa: float) -> float:
     """Recompute fee from MSA percentage when fee_amount=0 or is_fees_computed=False."""
     if not msa or msa <= 0:
@@ -43,10 +56,10 @@ def process_transactions(transactions: List[Dict[str, Any]]) -> Dict[str, Any]:
     for tx in transactions:
         merchant_id = tx.get("merchant_id", "unknown")
         merchant_name = tx.get("merchant_name", merchant_id)
-        amount = float(tx.get("amount", 0) or 0)
-        fee_amount = float(tx.get("fee_amount", 0) or 0)
+        amount = _to_float(tx.get("amount", 0))
+        fee_amount = _to_float(tx.get("fee_amount", 0))
         is_fees_computed = tx.get("is_fees_computed", True)
-        msa = float(tx.get("msa", 0) or 0)
+        msa = _to_float(tx.get("msa", 0))
 
         # Recompute if fee is 0 or not computed
         if fee_amount == 0 or not is_fees_computed:
@@ -90,9 +103,9 @@ def process_withdrawals(withdrawals: List[Dict[str, Any]]) -> Dict[str, Any]:
 
     for w in withdrawals:
         mid = w.get("merchant_id", "unknown")
-        amount = float(w.get("amount", 0) or 0)
-        fee_amount = float(w.get("fee_amount", 0) or 0)
-        msa = float(w.get("msa", 0) or 0)
+        amount = _to_float(w.get("amount", 0))
+        fee_amount = _to_float(w.get("fee_amount", 0))
+        msa = _to_float(w.get("msa", 0))
 
         if fee_amount == 0:
             fee_amount = recompute_fee(amount, msa)
@@ -115,9 +128,9 @@ def process_refunds(refunds: List[Dict[str, Any]]) -> Dict[str, Any]:
 
     for r in refunds:
         mid = r.get("merchant_id", "unknown")
-        amount = float(r.get("amount", 0) or 0)
-        fee_amount = float(r.get("fee_amount", 0) or 0)
-        msa = float(r.get("msa", 0) or 0)
+        amount = _to_float(r.get("amount", 0))
+        fee_amount = _to_float(r.get("fee_amount", 0))
+        msa = _to_float(r.get("msa", 0))
 
         if fee_amount == 0:
             fee_amount = recompute_fee(amount, msa)
