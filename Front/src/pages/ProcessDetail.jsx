@@ -121,6 +121,14 @@ export default function ProcessDetail() {
     queryFn: () => filesApi.list(id).then(r => r.data),
   })
 
+  const { data: config } = useQuery({
+    queryKey: ['process-config'],
+    queryFn: () => processApi.config().then(r => r.data),
+    staleTime: Infinity,
+  })
+
+  const kushkiSftpEnabled = config?.kushki_sftp_enabled ?? false
+
   const runMutation = useMutation({
     mutationFn: () => processApi.run(id),
     onSuccess: () => {
@@ -185,10 +193,17 @@ export default function ProcessDetail() {
           {/* File uploads */}
           <div className="card space-y-4">
             <h2 className="text-base font-semibold text-white">Archivos de entrada</h2>
-            <div className="grid grid-cols-2 gap-4">
-              <FileUpload processId={id} fileType="kushki" label="Archivos Kushki" />
+            <div className={`grid gap-4 ${kushkiSftpEnabled ? 'grid-cols-1' : 'grid-cols-2'}`}>
+              {!kushkiSftpEnabled && (
+                <FileUpload processId={id} fileType="kushki" label="Archivos Kushki" />
+              )}
               <FileUpload processId={id} fileType="banregio" label="Archivos Banregio" />
             </div>
+            {kushkiSftpEnabled && (
+              <p className="text-xs text-emerald-400 flex items-center gap-1">
+                <CheckCircle2 size={12} /> Kushki se descargará automáticamente vía SFTP al ejecutar
+              </p>
+            )}
 
             {files.length > 0 && (
               <div className="mt-2 space-y-1">

@@ -32,6 +32,7 @@ export const authApi = {
 // ── Processes ───────────────────────────────────────────────────────────────
 export const processApi = {
   list: () => api.get('/processes/'),
+  config: () => api.get('/processes/config'),
   get: (id) => api.get(`/processes/${id}`),
   create: (data) => api.post('/processes/', data),
   run: (id) => api.post(`/processes/${id}/run`),

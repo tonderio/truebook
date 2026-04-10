@@ -28,6 +28,11 @@ def _set_stage(db: Session, process: AccountingProcess, stage: str, progress: in
     db.commit()
 
 
+@router.get("/config")
+def get_config(_: User = Depends(get_current_user)):
+    return {"kushki_sftp_enabled": settings.KUSHKI_SFTP_ENABLED and kushki_sftp.is_configured()}
+
+
 @router.post("/", response_model=ProcessOut)
 def create_process(
     body: ProcessCreate,
