@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     KUSHKI_SFTP_PORT: int = 22
     KUSHKI_SFTP_USERNAME: Optional[str] = None
     KUSHKI_SFTP_PRIVATE_KEY_PATH: Optional[str] = None
+    KUSHKI_SFTP_PRIVATE_KEY: Optional[str] = None  # key content as env var (overrides PATH)
     KUSHKI_SFTP_PRIVATE_KEY_PASSPHRASE: Optional[str] = None
     KUSHKI_SFTP_REMOTE_DIR: str = "/Mensual"
     KUSHKI_SFTP_TIMEOUT_SECONDS: int = 30

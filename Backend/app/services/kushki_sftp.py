@@ -57,30 +57,49 @@ def is_configured() -> bool:
     return bool(
         settings.KUSHKI_SFTP_HOST
         and settings.KUSHKI_SFTP_USERNAME
-        and settings.KUSHKI_SFTP_PRIVATE_KEY_PATH
+        and (settings.KUSHKI_SFTP_PRIVATE_KEY or settings.KUSHKI_SFTP_PRIVATE_KEY_PATH)
     )
 
 
 def _load_private_key():
-    key_path = settings.KUSHKI_SFTP_PRIVATE_KEY_PATH
+    import io
     passphrase = settings.KUSHKI_SFTP_PRIVATE_KEY_PASSPHRASE or None
-    if not key_path:
-        raise ValueError("KUSHKI_SFTP_PRIVATE_KEY_PATH is required")
-    if not os.path.exists(key_path):
-        raise ValueError(f"SFTP private key not found at: {key_path}")
 
-    loaders = [
+    loaders_file = [
         paramiko.RSAKey.from_private_key_file,
         paramiko.Ed25519Key.from_private_key_file,
         paramiko.ECDSAKey.from_private_key_file,
     ]
+    loaders_str = [
+        paramiko.RSAKey.from_private_key,
+        paramiko.Ed25519Key.from_private_key,
+        paramiko.ECDSAKey.from_private_key,
+    ]
+
+    # Prefer key content from env var over file path
+    if settings.KUSHKI_SFTP_PRIVATE_KEY:
+        key_content = settings.KUSHKI_SFTP_PRIVATE_KEY.replace("\\n", "\n")
+        errors = []
+        for loader in loaders_str:
+            try:
+                return loader(io.StringIO(key_content), password=passphrase)
+            except Exception as e:
+                errors.append(f"{loader.__qualname__}: {e}")
+        raise ValueError("Unable to parse SFTP private key from env var. " + " | ".join(errors))
+
+    key_path = settings.KUSHKI_SFTP_PRIVATE_KEY_PATH
+    if not key_path:
+        raise ValueError("KUSHKI_SFTP_PRIVATE_KEY or KUSHKI_SFTP_PRIVATE_KEY_PATH is required")
+    if not os.path.exists(key_path):
+        raise ValueError(f"SFTP private key not found at: {key_path}")
+
     errors = []
-    for loader in loaders:
+    for loader in loaders_file:
         try:
             return loader(key_path, password=passphrase)
         except Exception as e:
             errors.append(f"{loader.__qualname__}: {e}")
-    raise ValueError("Unable to parse SFTP private key. " + " | ".join(errors))
+    raise ValueError("Unable to parse SFTP private key from file. " + " | ".join(errors))
 
 
 def _connect() -> paramiko.SFTPClient:
