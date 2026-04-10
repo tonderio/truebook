@@ -77,8 +77,15 @@ def _load_private_key():
     ]
 
     # Prefer key content from env var over file path
-    if settings.KUSHKI_SFTP_PRIVATE_KEY:
-        key_content = settings.KUSHKI_SFTP_PRIVATE_KEY.replace("\\n", "\n")
+    # Also detect if KUSHKI_SFTP_PRIVATE_KEY_PATH contains key content instead of a path
+    key_content_raw = settings.KUSHKI_SFTP_PRIVATE_KEY or (
+        settings.KUSHKI_SFTP_PRIVATE_KEY_PATH
+        if settings.KUSHKI_SFTP_PRIVATE_KEY_PATH and settings.KUSHKI_SFTP_PRIVATE_KEY_PATH.strip().startswith("-----BEGIN")
+        else None
+    )
+
+    if key_content_raw:
+        key_content = key_content_raw.replace("\\n", "\n")
         errors = []
         for loader in loaders_str:
             try:

@@ -28,7 +28,8 @@ async def upload_file(
     if file_type not in ("kushki", "banregio"):
         raise HTTPException(status_code=400, detail="file_type must be 'kushki' or 'banregio'")
 
-    upload_dir = os.path.join(settings.UPLOAD_DIR, str(process_id))
+    base_dir = os.path.abspath(settings.UPLOAD_DIR)
+    upload_dir = os.path.join(base_dir, str(process_id))
     os.makedirs(upload_dir, exist_ok=True)
 
     ext = os.path.splitext(file.filename)[1]
