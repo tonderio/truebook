@@ -3,200 +3,165 @@
 @tailwind utilities;
 
 /* ═══════════════════════════════════════════════════════════════
-   TrueBook Design System — Light Mode Only
-   Inspired by Tonder Dashboard v2 + Stripe + Tremor
+   TrueBook Design System — Mollie-inspired
+   Warm, clean, professional. Rounded corners, soft shadows,
+   minimal color, generous spacing.
    ═══════════════════════════════════════════════════════════════ */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-:root {
-  --blue-600: #2563eb;
-  --blue-500: #3b82f6;
-  --blue-100: #dbeafe;
-  --blue-50:  #eff6ff;
-}
-
-* { font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif; }
+* { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
 
 body {
-  background: #f9fafb;
-  color: #111827;
+  background: #fafaf9;
+  color: #1c1917;
   -webkit-font-smoothing: antialiased;
 }
 
-/* ── Scrollbar ─────────────────────────────────────────────── */
+/* ── Scrollbar ────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 99px; }
-::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+::-webkit-scrollbar-thumb { background: #d6d3d1; border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: #a8a29e; }
 
-/* ── Cards (Tonder v2 style) ───────────────────────────────── */
+/* ── Cards ─────────────────────────────────────────────────── */
 .t-card {
   background: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
+  border: 1px solid #e7e5e4;
+  border-radius: 12px;
   padding: 24px;
-  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
 }
 
 /* ── Buttons ───────────────────────────────────────────────── */
 .btn-primary {
-  background: #2563eb;
-  color: white;
+  background: #1c1917;
+  color: #fafaf9;
   font-weight: 500;
-  font-size: 13px;
-  padding: 6px 14px;
-  border-radius: 6px;
-  transition: all 0.1s;
+  font-size: 14px;
+  padding: 8px 16px;
+  border-radius: 10px;
+  transition: all 0.15s;
   border: none;
   cursor: pointer;
 }
-.btn-primary:hover:not(:disabled) { background: #1d4ed8; }
-.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primary:hover:not(:disabled) { background: #292524; }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .btn-secondary {
   background: #ffffff;
-  color: #374151;
+  color: #44403c;
   font-weight: 500;
-  font-size: 13px;
-  padding: 6px 14px;
-  border-radius: 6px;
-  border: 1px solid #e5e7eb;
-  transition: all 0.1s;
+  font-size: 14px;
+  padding: 8px 16px;
+  border-radius: 10px;
+  border: 1px solid #d6d3d1;
+  transition: all 0.15s;
   cursor: pointer;
 }
-.btn-secondary:hover { background: #f9fafb; border-color: #d1d5db; }
-
-.btn-danger {
-  color: #dc2626;
-  font-weight: 500;
-  font-size: 13px;
-  padding: 6px 14px;
-  border-radius: 6px;
-  background: transparent;
-  border: 1px solid transparent;
-  transition: all 0.1s;
-  cursor: pointer;
-}
-.btn-danger:hover { background: #fef2f2; border-color: #fecaca; }
+.btn-secondary:hover { background: #fafaf9; border-color: #a8a29e; }
 
 /* ── Inputs ────────────────────────────────────────────────── */
 .t-input {
   background: #ffffff;
-  border: 1px solid #e5e7eb;
-  color: #111827;
-  border-radius: 6px;
-  padding: 8px 12px;
+  border: 1px solid #d6d3d1;
+  color: #1c1917;
+  border-radius: 10px;
+  padding: 10px 14px;
   width: 100%;
   font-size: 14px;
-  transition: all 0.1s;
+  transition: all 0.15s;
   outline: none;
-  height: 36px;
+  height: 42px;
 }
 .t-input:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 2px #eff6ff;
+  border-color: #1c1917;
+  box-shadow: 0 0 0 3px rgba(28,25,23,0.06);
 }
-.t-input::placeholder { color: #9ca3af; }
+.t-input::placeholder { color: #a8a29e; }
 
 .t-label {
   font-size: 14px;
   font-weight: 500;
-  color: #374151;
-  margin-bottom: 4px;
+  color: #44403c;
+  margin-bottom: 6px;
   display: block;
 }
 
-/* ── Badges (Tonder v2 subtle fills) ──────────────────────── */
+/* ── Badges ────────────────────────────────────────────────── */
 .t-badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 8px;
-  border-radius: 9999px;
+  padding: 3px 10px;
+  border-radius: 8px;
   font-size: 12px;
   font-weight: 500;
   white-space: nowrap;
 }
-.t-badge-emerald { background: #f0fdf4; color: #15803d; box-shadow: inset 0 0 0 1px rgba(22,163,74,0.2); }
-.t-badge-blue    { background: #eff6ff; color: #1d4ed8; box-shadow: inset 0 0 0 1px rgba(59,130,246,0.2); }
-.t-badge-amber   { background: #fffbeb; color: #b45309; box-shadow: inset 0 0 0 1px rgba(217,119,6,0.2); }
-.t-badge-red     { background: #fef2f2; color: #b91c1c; box-shadow: inset 0 0 0 1px rgba(220,38,38,0.15); }
-.t-badge-gray    { background: #f9fafb; color: #4b5563; box-shadow: inset 0 0 0 1px rgba(107,114,128,0.2); }
-.t-badge-violet  { background: #f5f3ff; color: #6d28d9; box-shadow: inset 0 0 0 1px rgba(124,58,237,0.2); }
-.t-badge-orange  { background: #fff7ed; color: #c2410c; box-shadow: inset 0 0 0 1px rgba(234,88,12,0.2); }
+.t-badge-emerald { background: #ecfdf5; color: #065f46; }
+.t-badge-blue    { background: #eff6ff; color: #1e40af; }
+.t-badge-amber   { background: #fffbeb; color: #92400e; }
+.t-badge-red     { background: #fef2f2; color: #991b1b; }
+.t-badge-gray    { background: #f5f5f4; color: #57534e; }
+.t-badge-violet  { background: #f5f3ff; color: #5b21b6; }
+.t-badge-orange  { background: #fff7ed; color: #9a3412; }
 
-/* ── Tables (Tonder v2 style) ─────────────────────────────── */
+/* ── Tables ────────────────────────────────────────────────── */
 .t-table { width: 100%; border-collapse: separate; border-spacing: 0; }
 .t-table th {
   text-align: left;
-  padding: 10px 16px;
-  font-size: 12px;
+  padding: 12px 16px;
+  font-size: 13px;
   font-weight: 500;
-  color: #6b7280;
-  border-bottom: 1px solid #e5e7eb;
-  background: #f9fafb;
+  color: #78716c;
+  border-bottom: 1px solid #e7e5e4;
   user-select: none;
 }
 .t-table td {
-  padding: 12px 16px;
+  padding: 14px 16px;
   font-size: 14px;
-  color: #374151;
-  border-bottom: 1px solid #f3f4f6;
+  color: #44403c;
+  border-bottom: 1px solid #f5f5f4;
 }
-.t-table tr:hover td { background: #f0f5ff; }
+.t-table tr:hover td { background: #fafaf9; }
 .t-table .num { text-align: right; font-variant-numeric: tabular-nums; }
 
-/* ── Tabs (submodule style) ───────────────────────────────── */
+/* ── Tabs ──────────────────────────────────────────────────── */
 .t-tab {
   padding: 12px 16px;
-  font-size: 13.5px;
+  font-size: 14px;
   font-weight: 500;
-  color: #9ca3af;
+  color: #a8a29e;
   border-bottom: 2px solid transparent;
   cursor: pointer;
-  transition: all 0.1s;
+  transition: all 0.15s;
   background: transparent;
   border-top: none;
   border-left: none;
   border-right: none;
 }
-.t-tab:hover { color: #374151; }
-.t-tab.active { color: #2563eb; border-bottom-color: #2563eb; }
+.t-tab:hover { color: #44403c; }
+.t-tab.active { color: #1c1917; border-bottom-color: #1c1917; }
 
-/* ── Preset pills ─────────────────────────────────────────── */
-.preset {
-  padding: 5px 12px;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  color: #6b7280;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  transition: all 0.1s;
-}
-.preset:hover { background: #f3f4f6; color: #374151; }
-.preset.active { background: #eff6ff; color: #2563eb; }
-
-/* ── KPI metric ───────────────────────────────────────────── */
+/* ── KPI ───────────────────────────────────────────────────── */
 .kpi-value {
-  font-size: 1.875rem;
+  font-size: 2rem;
   font-weight: 600;
-  color: #111827;
-  line-height: 2.25rem;
+  color: #1c1917;
+  line-height: 2.5rem;
   font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
 }
 .kpi-label {
   font-size: 14px;
-  font-weight: 500;
-  color: #6b7280;
+  font-weight: 400;
+  color: #78716c;
 }
 
 /* ── Progress bar ─────────────────────────────────────────── */
 .progress-track {
   height: 6px;
-  background: #f3f4f6;
+  background: #f5f5f4;
   border-radius: 99px;
   overflow: hidden;
 }
@@ -206,12 +171,12 @@ body {
   transition: width 0.5s ease;
 }
 
-/* ── Fade-in animation ────────────────────────────────────── */
+/* ── Fade-in ──────────────────────────────────────────────── */
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-.fade-in { animation: fadeIn 0.35s ease-out forwards; }
+.fade-in { animation: fadeIn 0.3s ease-out forwards; }
 .d1 { animation-delay: 0.05s; }
 .d2 { animation-delay: 0.10s; }
 .d3 { animation-delay: 0.15s; }
@@ -226,7 +191,7 @@ body {
   flex-shrink: 0;
 }
 
-/* ── Legacy compat (Tremor components still reference these) ── */
+/* ── Legacy compat ────────────────────────────────────────── */
 .input { @apply t-input; }
 .label { @apply t-label; }
 .card  { @apply t-card; }

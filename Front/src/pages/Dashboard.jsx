@@ -16,7 +16,7 @@ import {
 } from 'recharts'
 
 const MONTH_NAMES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
-const PIE_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#d1d5db']
+const PIE_COLORS = ['#10b981', '#1c1917', '#f59e0b', '#ef4444', '#d1d5db']
 
 function KpiCard({ label, value, icon: Icon, color, sub, delay = '' }) {
   return (
@@ -33,7 +33,7 @@ function KpiCard({ label, value, icon: Icon, color, sub, delay = '' }) {
           <p className="kpi-value mt-0.5">{value}</p>
         </div>
       </div>
-      {sub && <p className="text-xs text-gray-400 mt-3">{sub}</p>}
+      {sub && <p className="text-xs text-stone-400 mt-3">{sub}</p>}
     </div>
   )
 }
@@ -41,8 +41,8 @@ function KpiCard({ label, value, icon: Icon, color, sub, delay = '' }) {
 function ChartTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null
   return (
-    <div className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs shadow-lg">
-      <p className="font-medium text-gray-900 mb-1">{label}</p>
+    <div className="bg-white border border-stone-200 rounded-lg px-3 py-2 text-xs shadow-lg">
+      <p className="font-medium text-stone-900 mb-1">{label}</p>
       {payload.map(p => (
         <p key={p.dataKey} style={{ color: p.color }}>
           {p.name}: {p.value}
@@ -92,13 +92,13 @@ export default function Dashboard() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <p className="text-sm text-gray-500">
-            {greeting}, <span className="font-medium text-gray-900">{user?.full_name?.split(' ')[0]}</span>
+          <p className="text-sm text-stone-500">
+            {greeting}, <span className="font-medium text-stone-900">{user?.full_name?.split(' ')[0]}</span>
           </p>
-          <h1 className="text-[15px] font-semibold text-gray-900 mt-0.5">
+          <h1 className="text-[15px] font-semibold text-stone-900 mt-0.5">
             Overview
-            <span className="text-gray-300 mx-2">|</span>
-            <span className="text-[13px] font-normal text-gray-400">
+            <span className="text-stone-300 mx-2">|</span>
+            <span className="text-[13px] font-normal text-stone-400">
               {format(now, "EEEE, d 'de' MMMM yyyy", { locale: es })}
             </span>
           </h1>
@@ -111,7 +111,7 @@ export default function Dashboard() {
 
       {/* KPI row */}
       <div className="grid grid-cols-4 gap-4 mb-6">
-        <KpiCard label="Total Corridas" value={stats.total} icon={Clock} color="#6b7280"
+        <KpiCard label="Total Corridas" value={stats.total} icon={Clock} color="#78716c"
           sub={stats.total > 0 ? 'Periodo activo' : 'Sin corridas aun'} delay="d1" />
         <KpiCard label="Completadas" value={stats.completed} icon={CheckCircle2} color="#2563eb"
           sub={stats.total > 0 ? `${Math.round(stats.completed / stats.total * 100)}% del total` : ''} delay="d2" />
@@ -127,8 +127,8 @@ export default function Dashboard() {
         <div className="t-card col-span-2 fade-in d3">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <p className="text-sm font-semibold text-gray-900">Actividad Mensual</p>
-              <p className="text-xs text-gray-400 mt-0.5">Corridas ejecutadas por mes</p>
+              <p className="text-sm font-semibold text-stone-900">Actividad Mensual</p>
+              <p className="text-xs text-stone-400 mt-0.5">Corridas ejecutadas por mes</p>
             </div>
           </div>
           {chartData.some(d => d.Corridas > 0) ? (
@@ -136,19 +136,19 @@ export default function Dashboard() {
               <AreaChart data={chartData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="gBlue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.15} />
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                    <stop offset="5%" stopColor="#1c1917" stopOpacity={0.15} />
+                    <stop offset="95%" stopColor="#1c1917" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <XAxis dataKey="month" tick={{ fill: '#9ca3af', fontSize: 11 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: '#9ca3af', fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
+                <XAxis dataKey="month" tick={{ fill: '#a8a29e', fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: '#a8a29e', fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
                 <Tooltip content={<ChartTooltip />} />
-                <Area type="monotone" dataKey="Corridas" stroke="#3b82f6" strokeWidth={2}
-                  fill="url(#gBlue)" dot={{ fill: '#3b82f6', r: 3, strokeWidth: 0 }} />
+                <Area type="monotone" dataKey="Corridas" stroke="#1c1917" strokeWidth={2}
+                  fill="url(#gBlue)" dot={{ fill: '#1c1917', r: 3, strokeWidth: 0 }} />
               </AreaChart>
             </ResponsiveContainer>
           ) : (
-            <div className="flex flex-col items-center justify-center h-[180px] text-gray-300">
+            <div className="flex flex-col items-center justify-center h-[180px] text-stone-300">
               <TrendingUp size={24} className="mb-2" />
               <p className="text-sm">Sin actividad aun</p>
             </div>
@@ -157,8 +157,8 @@ export default function Dashboard() {
 
         {/* Donut chart */}
         <div className="t-card fade-in d4">
-          <p className="text-sm font-semibold text-gray-900">Estado de Corridas</p>
-          <p className="text-xs text-gray-400 mt-0.5 mb-4">Distribucion por status</p>
+          <p className="text-sm font-semibold text-stone-900">Estado de Corridas</p>
+          <p className="text-xs text-stone-400 mt-0.5 mb-4">Distribucion por status</p>
           {pieData.length > 0 ? (
             <div className="flex flex-col items-center">
               <ResponsiveContainer width="100%" height={140}>
@@ -173,7 +173,7 @@ export default function Dashboard() {
               </ResponsiveContainer>
               <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
                 {pieData.map((d, i) => (
-                  <div key={d.name} className="flex items-center gap-1.5 text-xs text-gray-500">
+                  <div key={d.name} className="flex items-center gap-1.5 text-xs text-stone-500">
                     <div className="status-dot" style={{ background: PIE_COLORS[i] }} />
                     {d.name} ({d.value})
                   </div>
@@ -181,7 +181,7 @@ export default function Dashboard() {
               </div>
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center h-[140px] text-gray-300">
+            <div className="flex flex-col items-center justify-center h-[140px] text-stone-300">
               <p className="text-sm">Sin datos</p>
             </div>
           )}
@@ -190,23 +190,23 @@ export default function Dashboard() {
 
       {/* Recent runs */}
       <div className="t-card p-0 overflow-hidden fade-in d5">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-stone-100">
           <div>
-            <p className="text-sm font-semibold text-gray-900">Corridas Recientes</p>
-            <p className="text-xs text-gray-400 mt-0.5">Ultimas corridas de conciliacion</p>
+            <p className="text-sm font-semibold text-stone-900">Corridas Recientes</p>
+            <p className="text-xs text-stone-400 mt-0.5">Ultimas corridas de conciliacion</p>
           </div>
-          <Link to="/processes" className="text-[13px] text-blue-600 hover:text-blue-700 flex items-center gap-1 font-medium">
+          <Link to="/processes" className="text-[13px] text-stone-700 hover:text-blue-700 flex items-center gap-1 font-medium">
             Ver todas <ArrowRight size={13} />
           </Link>
         </div>
 
         {isLoading ? (
           <div className="flex items-center justify-center py-16">
-            <Loader2 size={18} className="animate-spin text-gray-300" />
+            <Loader2 size={18} className="animate-spin text-stone-300" />
           </div>
         ) : recent.length === 0 ? (
           <div className="text-center py-16">
-            <p className="text-sm text-gray-400 mb-3">Sin corridas registradas</p>
+            <p className="text-sm text-stone-400 mb-3">Sin corridas registradas</p>
             <Link to="/processes/new" className="btn-primary inline-flex items-center gap-2 text-sm">
               <Plus size={14} /> Crear primera corrida
             </Link>
@@ -228,9 +228,9 @@ export default function Dashboard() {
             <tbody>
               {recent.map(p => (
                 <tr key={p.id}>
-                  <td className="font-medium text-gray-900">{p.name}</td>
+                  <td className="font-medium text-stone-900">{p.name}</td>
                   <td><span className="t-badge t-badge-blue">{p.bank_account || 'Banregio'}</span></td>
-                  <td className="text-gray-500">
+                  <td className="text-stone-500">
                     {p.period_year}-{String(p.period_month).padStart(2, '0')}
                   </td>
                   <td><StatusBadge status={p.status} /></td>
@@ -243,25 +243,25 @@ export default function Dashboard() {
                             style={{
                               width: `${p.coverage_pct}%`,
                               background: p.coverage_pct >= 100 ? '#10b981'
-                                : p.coverage_pct >= 50 ? '#3b82f6' : '#ef4444',
+                                : p.coverage_pct >= 50 ? '#1c1917' : '#ef4444',
                             }}
                           />
                         </div>
-                        <span className="text-[11px] text-gray-400 mt-0.5">{p.coverage_pct}%</span>
+                        <span className="text-[11px] text-stone-400 mt-0.5">{p.coverage_pct}%</span>
                       </div>
                     ) : (
-                      <span className="text-[11px] text-gray-400">—</span>
+                      <span className="text-[11px] text-stone-400">—</span>
                     )}
                   </td>
-                  <td className="text-gray-500">
+                  <td className="text-stone-500">
                     {p.coverage_pct != null ? `${p.coverage_pct}%` : '—'}
                   </td>
-                  <td className="text-gray-400 text-[13px]">
+                  <td className="text-stone-400 text-[13px]">
                     {format(new Date(p.created_at), 'dd MMM, HH:mm', { locale: es })}
                   </td>
                   <td>
                     <Link to={`/processes/${p.id}`}
-                      className="text-[13px] text-blue-600 hover:text-blue-700 font-medium">
+                      className="text-[13px] text-stone-700 hover:text-blue-700 font-medium">
                       Abrir <ArrowRight size={11} className="inline" />
                     </Link>
                   </td>
