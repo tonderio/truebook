@@ -1,24 +1,20 @@
 import React from 'react'
-import { CheckCircle2, Loader2, XCircle, Clock, FileCheck, Upload, AlertCircle } from 'lucide-react'
 
 const CONFIG = {
-  completed: { label: 'Completado', className: 'badge-success', icon: CheckCircle2 },
-  running:   { label: 'Ejecutando', className: 'badge-info',    icon: Loader2, spin: true },
-  failed:    { label: 'Fallido',    className: 'badge-error',   icon: XCircle },
-  pending:   { label: 'Pendiente',  className: 'badge-pending', icon: Clock },
-  parsed:    { label: 'Parseado',   className: 'badge-success', icon: FileCheck },
-  uploaded:  { label: 'Cargado',    className: 'badge-info',    icon: Upload },
-  error:     { label: 'Error',      className: 'badge-error',   icon: AlertCircle },
-  warning:   { label: 'Advertencia',className: 'badge-warning', icon: AlertCircle },
+  completed:  { label: 'Completado',  cls: 't-badge t-badge-blue' },
+  reconciled: { label: 'Reconciliado', cls: 't-badge t-badge-emerald' },
+  running:    { label: 'Ejecutando',  cls: 't-badge t-badge-amber' },
+  failed:     { label: 'Fallido',     cls: 't-badge t-badge-red' },
+  pending:    { label: 'Pendiente',   cls: 't-badge t-badge-gray' },
+  parsed:     { label: 'Parseado',    cls: 't-badge t-badge-emerald' },
+  uploaded:   { label: 'Cargado',     cls: 't-badge t-badge-blue' },
+  error:      { label: 'Error',       cls: 't-badge t-badge-red' },
+  warning:    { label: 'Advertencia', cls: 't-badge t-badge-amber' },
+  approved:   { label: 'Aprobado',    cls: 't-badge t-badge-emerald' },
+  rejected:   { label: 'Rechazado',   cls: 't-badge t-badge-red' },
 }
 
 export default function StatusBadge({ status }) {
-  const cfg = CONFIG[status] || { label: status, className: 'badge-pending', icon: Clock }
-  const Icon = cfg.icon
-  return (
-    <span className={cfg.className}>
-      <Icon size={10} className={cfg.spin ? 'animate-spin' : ''} />
-      {cfg.label}
-    </span>
-  )
+  const cfg = CONFIG[status] || { label: status, cls: 't-badge t-badge-gray' }
+  return <span className={cfg.cls}>{cfg.label}</span>
 }

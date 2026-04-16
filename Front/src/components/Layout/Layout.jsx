@@ -8,7 +8,7 @@ export default function Layout() {
   if (!isAuthenticated) return <Navigate to="/login" replace />
 
   return (
-    <div className="flex min-h-screen" style={{ background: 'var(--tonder-bg)' }}>
+    <div className="flex min-h-screen bg-gray-50">
       <Sidebar />
       <main className="flex-1 overflow-y-auto min-w-0">
         <Outlet />

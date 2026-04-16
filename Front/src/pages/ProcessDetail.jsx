@@ -13,12 +13,14 @@ import clsx from 'clsx'
 
 const STAGES = [
   { key: 'extracting_transactions', label: 'Extrayendo transacciones' },
-  { key: 'extracting_withdrawals',  label: 'Extrayendo withdrawals' },
-  { key: 'extracting_refunds',      label: 'Extrayendo refunds' },
-  { key: 'processing_fees',         label: 'Procesando FEES' },
+  { key: 'extracting_withdrawals',  label: 'Extrayendo retiros' },
+  { key: 'extracting_refunds',      label: 'Extrayendo reembolsos' },
+  { key: 'processing_fees',         label: 'Procesando comisiones' },
   { key: 'parsing_kushki',          label: 'Parseando Kushki' },
   { key: 'parsing_banregio',        label: 'Parseando Banregio' },
   { key: 'conciliating',            label: 'Conciliando' },
+  { key: 'classifying',             label: 'Clasificando movimientos' },
+  { key: 'alerting',                label: 'Generando alertas' },
   { key: 'done',                    label: 'Completado' },
 ]
 
@@ -34,17 +36,17 @@ function StageTimeline({ currentStage, progress, status }) {
           <div key={stage.key} className="flex items-center gap-3">
             <div className={clsx(
               'w-6 h-6 rounded-full flex items-center justify-center text-xs shrink-0',
-              done   ? 'bg-emerald-600 text-white' :
-              active ? 'bg-brand-600 text-white' :
-                       'bg-slate-800 text-slate-500'
+              done   ? 'bg-emerald-500 text-white' :
+              active ? 'bg-blue-500 text-white' :
+                       'bg-gray-100 text-gray-400'
             )}>
               {done ? <CheckCircle2 size={12} /> : active ? <Loader2 size={12} className="animate-spin" /> : idx + 1}
             </div>
             <span className={clsx(
               'text-sm',
-              done   ? 'text-emerald-400' :
-              active ? 'text-brand-300 font-medium' :
-                       'text-slate-500'
+              done   ? 'text-emerald-600' :
+              active ? 'text-blue-600 font-medium' :
+                       'text-gray-400'
             )}>
               {stage.label}
             </span>
@@ -70,11 +72,11 @@ function FileUpload({ processId, fileType, label }) {
 
   return (
     <div>
-      <p className="text-sm font-medium text-slate-300 mb-2">{label}</p>
+      <p className="text-sm font-medium text-gray-700 mb-2">{label}</p>
       <label
         className={clsx(
           'flex flex-col items-center justify-center h-24 border-2 border-dashed rounded-xl cursor-pointer transition-colors',
-          dragging ? 'border-brand-500 bg-brand-900/20' : 'border-slate-700 hover:border-slate-600'
+          dragging ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
         )}
         onDragOver={e => { e.preventDefault(); setDragging(true) }}
         onDragLeave={() => setDragging(false)}
@@ -88,10 +90,10 @@ function FileUpload({ processId, fileType, label }) {
           onChange={e => handleFiles(e.target.files)}
         />
         {upload.isPending
-          ? <Loader2 size={20} className="animate-spin text-slate-400" />
+          ? <Loader2 size={20} className="animate-spin text-gray-400" />
           : <>
-              <Upload size={20} className="text-slate-400 mb-1" />
-              <p className="text-xs text-slate-500">Arrastra o haz clic · CSV, Excel, PDF</p>
+              <Upload size={20} className="text-gray-400 mb-1" />
+              <p className="text-xs text-gray-500">Arrastra o haz clic · CSV, Excel, PDF</p>
             </>
         }
       </label>
@@ -144,7 +146,7 @@ export default function ProcessDetail() {
 
   if (!proc) return (
     <div className="flex items-center justify-center h-full py-20">
-      <Loader2 size={24} className="animate-spin text-slate-500" />
+      <Loader2 size={24} className="animate-spin text-gray-400" />
     </div>
   )
 
@@ -155,13 +157,13 @@ export default function ProcessDetail() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <div className="flex items-center gap-2 text-slate-500 text-sm mb-1">
-            <Link to="/processes" className="hover:text-slate-300">Proceso Contable</Link>
+          <div className="flex items-center gap-2 text-gray-500 text-sm mb-1">
+            <Link to="/processes" className="hover:text-gray-700">Proceso Contable</Link>
             <ChevronRight size={12} />
-            <span className="text-slate-300">{proc.name}</span>
+            <span className="text-gray-900">{proc.name}</span>
           </div>
-          <h1 className="text-2xl font-bold text-white">{proc.name}</h1>
-          <p className="text-slate-400 text-sm mt-0.5">
+          <h1 className="text-2xl font-semibold text-gray-900">{proc.name}</h1>
+          <p className="text-gray-500 text-sm mt-0.5">
             Período: {proc.period_year}-{String(proc.period_month).padStart(2, '0')} ·
             Adquirentes: {(proc.acquirers || []).join(', ')}
           </p>
@@ -192,7 +194,7 @@ export default function ProcessDetail() {
         <div className="col-span-2 space-y-6">
           {/* File uploads */}
           <div className="card space-y-4">
-            <h2 className="text-base font-semibold text-white">Archivos de entrada</h2>
+            <h2 className="text-base font-semibold text-gray-900">Archivos de entrada</h2>
             <div className={`grid gap-4 ${kushkiSftpEnabled ? 'grid-cols-1' : 'grid-cols-2'}`}>
               {!kushkiSftpEnabled && (
                 <FileUpload processId={id} fileType="kushki" label="Archivos Kushki" />
@@ -200,7 +202,7 @@ export default function ProcessDetail() {
               <FileUpload processId={id} fileType="banregio" label="Archivos Banregio" />
             </div>
             {kushkiSftpEnabled && (
-              <p className="text-xs text-emerald-400 flex items-center gap-1">
+              <p className="text-xs text-emerald-600 flex items-center gap-1">
                 <CheckCircle2 size={12} /> Kushki se descargará automáticamente vía SFTP al ejecutar
               </p>
             )}
@@ -208,18 +210,18 @@ export default function ProcessDetail() {
             {files.length > 0 && (
               <div className="mt-2 space-y-1">
                 {files.map(f => (
-                  <div key={f.id} className="flex items-center gap-3 px-3 py-2 bg-slate-800/50 rounded-lg">
-                    <FileText size={14} className="text-slate-400 shrink-0" />
+                  <div key={f.id} className="flex items-center gap-3 px-3 py-2 bg-gray-50 rounded-lg">
+                    <FileText size={14} className="text-gray-400 shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-slate-200 truncate">{f.original_name}</p>
-                      <p className="text-xs text-slate-500">
+                      <p className="text-sm text-gray-900 truncate">{f.original_name}</p>
+                      <p className="text-xs text-gray-500">
                         {f.file_type} · {(f.file_size / 1024).toFixed(1)} KB
                       </p>
                     </div>
                     <StatusBadge status={f.status} />
                     <button
                       onClick={() => deleteMutation.mutate(f.id)}
-                      className="text-slate-600 hover:text-red-400 transition-colors"
+                      className="text-gray-400 hover:text-red-500 transition-colors"
                     >
                       <Trash2 size={14} />
                     </button>
@@ -232,25 +234,25 @@ export default function ProcessDetail() {
           {/* Logs */}
           {progress?.logs?.length > 0 && (
             <div className="card">
-              <h2 className="text-base font-semibold text-white mb-3">Log de ejecución</h2>
+              <h2 className="text-base font-semibold text-gray-900 mb-3">Log de ejecución</h2>
               <div className="space-y-1 max-h-72 overflow-y-auto">
                 {progress.logs.map(log => (
                   <div
                     key={log.id}
                     className={clsx(
                       'flex items-start gap-2 text-xs px-2 py-1 rounded',
-                      log.level === 'error'   ? 'bg-red-900/20 text-red-400' :
-                      log.level === 'warning' ? 'bg-amber-900/20 text-amber-400' :
-                                               'text-slate-400'
+                      log.level === 'error'   ? 'bg-red-50 text-red-600' :
+                      log.level === 'warning' ? 'bg-amber-50 text-amber-700' :
+                                               'text-gray-500'
                     )}
                   >
                     {log.level === 'error' ? <AlertCircle size={12} className="mt-0.5 shrink-0" /> :
                      log.level === 'warning' ? <AlertCircle size={12} className="mt-0.5 shrink-0" /> :
                      <Info size={12} className="mt-0.5 shrink-0" />}
-                    <span className="text-slate-600 shrink-0">
+                    <span className="text-gray-400 shrink-0">
                       [{format(new Date(log.created_at), 'HH:mm:ss')}]
                     </span>
-                    <span className="font-medium text-slate-500 shrink-0">[{log.stage}]</span>
+                    <span className="font-medium text-gray-500 shrink-0">[{log.stage}]</span>
                     <span>{log.message}</span>
                   </div>
                 ))}
@@ -262,15 +264,16 @@ export default function ProcessDetail() {
         {/* Right: progress */}
         <div className="space-y-4">
           <div className="card">
-            <h2 className="text-base font-semibold text-white mb-4">Progreso</h2>
+            <h2 className="text-base font-semibold text-gray-900 mb-4">Progreso</h2>
             <div className="mb-4">
-              <div className="flex justify-between text-xs text-slate-400 mb-1">
+              <div className="flex justify-between text-xs text-gray-500 mb-1">
                 <span>{proc.current_stage ? proc.current_stage.replace(/_/g, ' ') : 'Sin iniciar'}</span>
                 <span>{proc.progress}%</span>
               </div>
-              <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+              <div className="progress-track">
                 <div
-                  className="h-full bg-brand-500 rounded-full transition-all duration-500"
+                  className="progress-fill"
+                  style={{ background: proc.status === 'failed' ? '#ef4444' : '#3b82f6' }}
                   style={{ width: `${proc.progress}%` }}
                 />
               </div>
@@ -283,9 +286,9 @@ export default function ProcessDetail() {
           </div>
 
           {proc.error_message && (
-            <div className="card border-red-800 bg-red-900/10">
-              <p className="text-sm font-medium text-red-400 mb-1">Error</p>
-              <p className="text-xs text-red-300">{proc.error_message}</p>
+            <div className="t-card border-red-200 bg-red-50">
+              <p className="text-sm font-medium text-red-700 mb-1">Error</p>
+              <p className="text-xs text-red-600">{proc.error_message}</p>
             </div>
           )}
         </div>

@@ -33,31 +33,45 @@ COLUMN_MAP = {
     "cuenta de ticket_number": "tx_count",
     "cuenta de ticket number": "tx_count",
     "monto bruto": "gross_amount",
+    "monto bruto (kushki)": "gross_amount",
     "gross": "gross_amount",
     "gross_amount": "gross_amount",
     "suma de approved_transaction_amount": "gross_amount",
+    "bruto ajustes": "adjustments",
     "comision": "commission",
-    "comision kushki": "commission",
+    "comision kushki": "kushki_commission",
+    "com. kushki": "kushki_commission",
     "comision kushki + iva": "commission",
+    "com. kushki + iva": "commission",
     "commission": "commission",
     "fee": "commission",
     "suma de kushki_commission": "kushki_commission",
     "suma de iva_kushki_commission": "iva_kushki_commission",
     "iva kushki": "iva_kushki_commission",
+    "iva (16%)": "iva_kushki_commission",
     "rolling reserve": "rolling_reserve",
     "rolling_reserve": "rolling_reserve",
     "rr retenido": "rolling_reserve",
     "suma de fraud_retention": "rolling_reserve",
     "rr liberado": "rr_released",
     "suma de liberacion de fondos": "rr_released",
+    "devolucion (refund)": "refund",
+    "contracargo (chargeback)": "chargeback",
+    "cancelacion (void)": "void",
+    "manual (manual)": "manual_adj",
     "ajustes": "adjustments",
     "suma de ajuste": "adjustments",
+    "ajuste total": "adjustments",
     "deposito neto": "net_deposit",
+    "deposito neto (monto abonar)": "net_deposit",
     "net deposit": "net_deposit",
     "net_deposit": "net_deposit",
     "deposito neto (abonar)": "net_deposit",
     "monto abonar": "net_deposit",
     "suma de monto abonar": "net_deposit",
+    "com. tonder s/iva": "tonder_fee",
+    "com. tonder c/iva": "tonder_fee_iva",
+    "tasa efectiva": "effective_rate",
 }
 
 
@@ -101,6 +115,7 @@ def _find_header_row(raw: pd.DataFrame, max_scan_rows: int = 35) -> Optional[int
 
 
 def _parse_excel(content: bytes) -> pd.DataFrame:
+    """Parse Excel, returning the best sheet. Also stores merchant sheet if found."""
     xls = pd.ExcelFile(io.BytesIO(content))
     preferred = ["Resumen Diario", "Resumen", "Detalle por Merchant", "Detalle de Liquidacion"]
     sheets = [s for s in preferred if s in xls.sheet_names] + [s for s in xls.sheet_names if s not in preferred]
@@ -123,21 +138,49 @@ def _parse_excel(content: bytes) -> pd.DataFrame:
             continue
 
         df = _normalize_columns(df)
-        score = 0
-        for col in ("date", "net_deposit", "gross_amount", "merchant_name", "tx_count"):
-            if col in df.columns:
-                score += 1
+        score = sum(1 for col in ("date", "net_deposit", "gross_amount", "merchant_name", "tx_count") if col in df.columns)
 
         if score > best_score:
             best_score = score
             best_df = df
 
-        if score >= 3:
-            return df
-
     if best_df is not None:
         return best_df
     raise ValueError("Unable to identify a valid Kushki sheet")
+
+
+def _parse_excel_multi(content: bytes):
+    """Parse Excel returning both daily summary DF and merchant detail DF."""
+    xls = pd.ExcelFile(io.BytesIO(content))
+    daily_df = None
+    merchant_df = None
+
+    for sheet in xls.sheet_names:
+        try:
+            raw = pd.read_excel(io.BytesIO(content), sheet_name=sheet, header=None)
+        except Exception:
+            continue
+        header_row = _find_header_row(raw)
+        if header_row is None:
+            continue
+        try:
+            df = pd.read_excel(io.BytesIO(content), sheet_name=sheet, header=header_row)
+        except Exception:
+            continue
+        df = _normalize_columns(df)
+
+        has_merchant = "merchant_name" in df.columns
+        has_date = "date" in df.columns
+        has_net = "net_deposit" in df.columns
+
+        if has_merchant and has_date and has_net and merchant_df is None:
+            merchant_df = df
+        elif has_date and has_net and not has_merchant and daily_df is None:
+            daily_df = df
+        elif has_date and has_net and daily_df is None:
+            daily_df = df
+
+    return daily_df, merchant_df
 
 
 def _parse_file(content: bytes, filename: str) -> pd.DataFrame:
@@ -157,24 +200,38 @@ def parse_kushki(content: bytes, filename: str) -> Dict[str, Any]:
     """
     Parse one Kushki file.
     Returns daily_summary and merchant_detail.
+    For Excel files, extracts both daily and merchant sheets separately.
     """
-    df = _parse_file(content, filename)
+    fname = filename.lower()
+    merchant_df_extra = None
+
+    if fname.endswith((".xlsx", ".xls")):
+        daily_df, merchant_df_extra = _parse_excel_multi(content)
+        df = daily_df if daily_df is not None else (merchant_df_extra if merchant_df_extra is not None else _parse_file(content, filename))
+    else:
+        df = _parse_file(content, filename)
 
     # Ensure required columns exist with defaults.
     for col in ["date", "tx_count", "gross_amount", "commission", "rolling_reserve", "net_deposit"]:
         if col not in df.columns:
             df[col] = 0
 
+    # Helper: safely convert a column (or default) to numeric Series
+    def _safe_numeric(col_or_val):
+        if isinstance(col_or_val, pd.Series):
+            return pd.to_numeric(col_or_val, errors="coerce").fillna(0)
+        return pd.Series([0] * len(df), dtype=float)
+
     # Derive commission if only component fields exist.
-    if "commission" not in df.columns or pd.to_numeric(df["commission"], errors="coerce").fillna(0).sum() == 0:
-        kushki_comm = pd.to_numeric(df.get("kushki_commission", 0), errors="coerce").fillna(0)
-        iva_comm = pd.to_numeric(df.get("iva_kushki_commission", 0), errors="coerce").fillna(0)
+    if "commission" not in df.columns or _safe_numeric(df["commission"]).sum() == 0:
+        kushki_comm = _safe_numeric(df.get("kushki_commission", pd.Series()))
+        iva_comm = _safe_numeric(df.get("iva_kushki_commission", pd.Series()))
         df["commission"] = kushki_comm + iva_comm
 
     # Rolling reserve net effect can include release columns in raw files.
     if "rr_released" in df.columns:
-        retained = pd.to_numeric(df.get("rolling_reserve", 0), errors="coerce").fillna(0)
-        released = pd.to_numeric(df.get("rr_released", 0), errors="coerce").fillna(0)
+        retained = _safe_numeric(df.get("rolling_reserve", pd.Series()))
+        released = _safe_numeric(df.get("rr_released", pd.Series()))
         df["rolling_reserve"] = retained - released
 
     # Convert numeric columns.
@@ -206,10 +263,21 @@ def parse_kushki(content: bytes, filename: str) -> Dict[str, Any]:
     )
     daily_summary = daily.to_dict(orient="records")
 
-    # Merchant detail.
-    if "merchant_name" in df.columns:
+    # Merchant detail — use separate merchant sheet if available.
+    mdf = merchant_df_extra if merchant_df_extra is not None else (df if "merchant_name" in df.columns else None)
+    if mdf is not None and "merchant_name" in mdf.columns:
+        # Ensure numeric columns exist
+        for col in ["tx_count", "gross_amount", "commission", "rolling_reserve", "net_deposit"]:
+            if col not in mdf.columns:
+                mdf[col] = 0
+            mdf[col] = pd.to_numeric(mdf[col], errors="coerce").fillna(0)
+        # Derive commission from components if needed
+        if mdf["commission"].sum() == 0 and "kushki_commission" in mdf.columns:
+            kc = pd.to_numeric(mdf.get("kushki_commission", 0), errors="coerce").fillna(0)
+            iv = pd.to_numeric(mdf.get("iva_kushki_commission", 0), errors="coerce").fillna(0)
+            mdf["commission"] = kc + iv
         merchant = (
-            df.groupby("merchant_name", as_index=False)
+            mdf.groupby("merchant_name", as_index=False)
             .agg(
                 tx_count=("tx_count", "sum"),
                 gross_amount=("gross_amount", "sum"),

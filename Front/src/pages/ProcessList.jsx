@@ -2,6 +2,11 @@ import React, { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { processApi } from '../api/client'
+import {
+  Card, Title, Text,
+  Table, TableHead, TableHeaderCell, TableBody, TableRow, TableCell,
+  Badge, ProgressBar,
+} from '@tremor/react'
 import { Plus, Loader2, Trash2 } from 'lucide-react'
 import StatusBadge from '../components/ui/StatusBadge'
 import { format } from 'date-fns'
@@ -26,11 +31,11 @@ export default function ProcessList() {
   })
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="p-6 lg:p-8 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Proceso Contable</h1>
-          <p className="text-slate-400 text-sm mt-1">Historial de corridas de cierre mensual</p>
+          <h1 className="text-2xl font-semibold text-gray-900">Proceso Contable</h1>
+          <p className="text-gray-500 text-sm mt-1">Historial de corridas de cierre mensual</p>
         </div>
         <Link to="/processes/new" className="btn-primary flex items-center gap-2">
           <Plus size={16} />
@@ -38,75 +43,86 @@ export default function ProcessList() {
         </Link>
       </div>
 
-      <div className="card p-0 overflow-hidden">
+      <Card className="p-0 overflow-hidden">
         {isLoading ? (
           <div className="flex items-center justify-center py-16">
-            <Loader2 size={24} className="animate-spin text-slate-500" />
+            <Loader2 size={20} className="animate-spin text-gray-400" />
           </div>
         ) : processes.length === 0 ? (
           <div className="text-center py-16">
-            <p className="text-slate-500">No hay corridas registradas.</p>
+            <p className="text-gray-500 mb-3">No hay corridas registradas.</p>
+            <Link to="/processes/new" className="btn-primary text-sm inline-flex items-center gap-2">
+              <Plus size={14} /> Crear corrida
+            </Link>
           </div>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="border-b border-slate-800 bg-slate-900/50">
-              <tr>
-                {['ID', 'Nombre', 'Período', 'Adquirentes', 'Estado', 'Progreso', 'Creado', ''].map(h => (
-                  <th key={h} className="text-left px-5 py-3 text-slate-400 font-medium">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableHeaderCell>ID</TableHeaderCell>
+                <TableHeaderCell>Nombre</TableHeaderCell>
+                <TableHeaderCell>Periodo</TableHeaderCell>
+                <TableHeaderCell>Adquirentes</TableHeaderCell>
+                <TableHeaderCell>Estado</TableHeaderCell>
+                <TableHeaderCell>Reconciliacion</TableHeaderCell>
+                <TableHeaderCell>Creado</TableHeaderCell>
+                <TableHeaderCell></TableHeaderCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
               {processes.map(p => (
-                <tr key={p.id} className="border-b border-slate-800/50 hover:bg-slate-800/20 transition-colors">
-                  <td className="px-5 py-3 text-slate-500">#{p.id}</td>
-                  <td className="px-5 py-3 text-slate-200 font-medium">{p.name}</td>
-                  <td className="px-5 py-3 text-slate-300">
+                <TableRow key={p.id}>
+                  <TableCell className="text-gray-500">#{p.id}</TableCell>
+                  <TableCell>
+                    <span className="font-medium text-gray-900">{p.name}</span>
+                  </TableCell>
+                  <TableCell className="text-gray-600">
                     {p.period_year}-{String(p.period_month).padStart(2, '0')}
-                  </td>
-                  <td className="px-5 py-3">
+                  </TableCell>
+                  <TableCell>
                     <div className="flex flex-wrap gap-1">
                       {(p.acquirers || []).map(a => (
-                        <span key={a} className="text-xs bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">
-                          {a}
-                        </span>
+                        <Badge key={a} color="gray" size="xs">{a}</Badge>
                       ))}
                     </div>
-                  </td>
-                  <td className="px-5 py-3"><StatusBadge status={p.status} /></td>
-                  <td className="px-5 py-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-24 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-brand-500 rounded-full"
-                          style={{ width: `${p.progress}%` }}
+                  </TableCell>
+                  <TableCell><StatusBadge status={p.status} /></TableCell>
+                  <TableCell>
+                    {p.coverage_pct != null ? (
+                      <div className="w-28">
+                        <ProgressBar
+                          value={p.coverage_pct}
+                          color={p.coverage_pct >= 100 ? 'emerald' : p.coverage_pct >= 50 ? 'blue' : 'red'}
                         />
+                        <span className="text-xs text-gray-500">{p.coverage_pct}%</span>
                       </div>
-                      <span className="text-xs text-slate-400">{p.progress}%</span>
-                    </div>
-                  </td>
-                  <td className="px-5 py-3 text-slate-500 text-xs">
+                    ) : (
+                      <span className="text-xs text-gray-400">
+                        {p.status === 'completed' || p.status === 'reconciled' ? '0%' : '—'}
+                      </span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-gray-500 text-sm">
                     {format(new Date(p.created_at), 'dd/MM/yyyy HH:mm', { locale: es })}
-                  </td>
-                  <td className="px-5 py-3">
+                  </TableCell>
+                  <TableCell>
                     <div className="flex items-center gap-3">
-                      <Link to={`/processes/${p.id}`} className="text-brand-400 hover:text-brand-300 text-xs font-medium">
-                        Abrir →
+                      <Link to={`/processes/${p.id}`} className="text-blue-600 hover:text-blue-700 text-sm font-medium">
+                        Abrir
                       </Link>
                       {p.status !== 'running' && (
                         confirmId === p.id ? (
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-2">
                             <button
                               onClick={() => deleteMutation.mutate(p.id)}
                               disabled={deleteMutation.isPending}
-                              className="text-xs text-red-400 hover:text-red-300 font-medium"
+                              className="text-xs text-red-600 hover:text-red-700 font-medium"
                             >
                               {deleteMutation.isPending ? <Loader2 size={12} className="animate-spin" /> : 'Confirmar'}
                             </button>
-                            <span className="text-slate-700">·</span>
                             <button
                               onClick={() => setConfirmId(null)}
-                              className="text-xs text-slate-500 hover:text-slate-400"
+                              className="text-xs text-gray-500 hover:text-gray-700"
                             >
                               Cancelar
                             </button>
@@ -114,20 +130,20 @@ export default function ProcessList() {
                         ) : (
                           <button
                             onClick={() => setConfirmId(p.id)}
-                            className="text-slate-600 hover:text-red-400 transition-colors"
+                            className="text-gray-400 hover:text-red-500 transition-colors"
                           >
                             <Trash2 size={14} />
                           </button>
                         )
                       )}
                     </div>
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         )}
-      </div>
+      </Card>
     </div>
   )
 }

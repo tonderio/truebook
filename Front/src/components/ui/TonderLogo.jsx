@@ -1,68 +1,31 @@
-import React from 'react'
+/**
+ * TrueBook Logo components.
+ * Uses the official TrueBook SVG logo from /public/truebook-logo.svg
+ */
 
-// Paths
-const ICON_SRC     = '/favicon-removebg-preview.png'      // Blue square icon (imagotipo)
-const LOGOTYPE_SRC = '/Diseño sin título (2).png'          // Full logo: icon + "tonder" text (black)
-
-// ── Blue square icon mark ────────────────────────────────────────────────────
-export function TonderMark({ size = 36 }) {
+export function TrueBookLogo({ height = 32, className = '' }) {
   return (
     <img
-      src={ICON_SRC}
-      alt="Tonder"
-      width={size}
-      height={size}
-      style={{
-        width: size,
-        height: size,
-        borderRadius: Math.round(size * 0.26),
-        objectFit: 'cover',
-        flexShrink: 0,
-        display: 'block',
-      }}
+      src="/truebook-logo.svg"
+      alt="TrueBook"
+      style={{ height }}
+      className={className}
     />
   )
 }
 
-// ── Full logotype: imagotipo + "tonder" wordmark ─────────────────────────────
-// onDark=true → inverts black to white (for dark backgrounds)
-export function TonderWordmark({ height = 32, onDark = true, style: extraStyle = {} }) {
+export function TrueBookMark({ size = 28 }) {
   return (
-    <img
-      src={LOGOTYPE_SRC}
-      alt="Tonder"
-      style={{
-        height,
-        width: 'auto',
-        objectFit: 'contain',
-        display: 'block',
-        filter: onDark ? 'invert(1)' : 'none',
-        flexShrink: 0,
-        ...extraStyle,
-      }}
-    />
-  )
-}
-
-// ── Compact: blue icon + inverted wordmark side by side ──────────────────────
-// Use when you want the colored icon next to the white text logo
-export function TonderBrand({ iconSize = 32, logoHeight = 22 }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <TonderMark size={iconSize} />
-      {/* Only the text part — we crop by using the full logotype but the icon
-          in the PNG is the same as the blue favicon, so we just show the logotype inverted */}
-      <img
-        src={LOGOTYPE_SRC}
-        alt="tonder"
-        style={{
-          height: logoHeight,
-          width: 'auto',
-          filter: 'invert(1)',
-          objectFit: 'contain',
-          display: 'block',
-        }}
-      />
+    <div
+      className="flex items-center justify-center rounded-lg bg-blue-600 text-white font-bold"
+      style={{ width: size, height: size, fontSize: size * 0.5 }}
+    >
+      TB
     </div>
   )
 }
+
+// Backward-compatible exports (old code references these)
+export const TonderWordmark = TrueBookLogo
+export const TonderMark = TrueBookMark
+export const TonderBrand = ({ logoHeight = 28 }) => <TrueBookLogo height={logoHeight} />

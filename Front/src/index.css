@@ -2,182 +2,231 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Dark theme (default) ────────────────────────────────── */
-:root, [data-theme="dark"] {
-  --tonder-blue: #375DFB;
-  --tonder-blue-dark: #2c4fd4;
-  --tonder-bg: #080c18;
-  --tonder-surface: #0d1226;
-  --tonder-surface-2: #111827;
-  --tonder-border: rgba(55,93,251,0.15);
-  --tonder-border-subtle: rgba(255,255,255,0.06);
-  --text-primary: #e8eaf0;
-  --text-secondary: #94a3b8;
-  --text-muted: #475569;
-  --text-faint: #334155;
-  --input-bg: rgba(255,255,255,0.04);
-  --input-border: rgba(255,255,255,0.1);
-  --login-panel-bg: linear-gradient(145deg, #080c18 0%, #0d1530 50%, #0a1245 100%);
-  --login-panel-border: rgba(55,93,251,0.12);
-  --logo-filter: invert(1);
+/* ═══════════════════════════════════════════════════════════════
+   TrueBook Design System — Light Mode Only
+   Inspired by Tonder Dashboard v2 + Stripe + Tremor
+   ═══════════════════════════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+  --blue-600: #2563eb;
+  --blue-500: #3b82f6;
+  --blue-100: #dbeafe;
+  --blue-50:  #eff6ff;
 }
 
-/* ── Light theme ─────────────────────────────────────────── */
-[data-theme="light"] {
-  --tonder-blue: #375DFB;
-  --tonder-blue-dark: #2c4fd4;
-  --tonder-bg: #f0f4ff;
-  --tonder-surface: #ffffff;
-  --tonder-surface-2: #f8faff;
-  --tonder-border: rgba(55,93,251,0.2);
-  --tonder-border-subtle: rgba(55,93,251,0.08);
-  --text-primary: #0f172a;
-  --text-secondary: #334155;
-  --text-muted: #64748b;
-  --text-faint: #94a3b8;
-  --input-bg: rgba(55,93,251,0.04);
-  --input-border: rgba(55,93,251,0.15);
-  --login-panel-bg: linear-gradient(145deg, #1e3a8a 0%, #1e40af 50%, #2563eb 100%);
-  --login-panel-border: rgba(255,255,255,0.15);
-  --logo-filter: invert(1);
-}
-
-* {
-  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
-}
+* { font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif; }
 
 body {
-  background: var(--tonder-bg);
-  color: var(--text-primary);
+  background: #f9fafb;
+  color: #111827;
   -webkit-font-smoothing: antialiased;
-  transition: background 0.3s ease, color 0.3s ease;
 }
 
 /* ── Scrollbar ─────────────────────────────────────────────── */
-::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(55,93,251,0.3); border-radius: 99px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(55,93,251,0.5); }
+::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
 
-/* ── Cards ─────────────────────────────────────────────────── */
-.card {
-  background: var(--tonder-surface);
-  border: 1px solid var(--tonder-border-subtle);
-  border-radius: 16px;
+/* ── Cards (Tonder v2 style) ───────────────────────────────── */
+.t-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
   padding: 24px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.4), 0 8px 32px rgba(0,0,0,0.2);
-}
-
-.card-glow {
-  background: var(--tonder-surface);
-  border: 1px solid rgba(55,93,251,0.2);
-  border-radius: 16px;
-  padding: 24px;
-  box-shadow: 0 0 0 1px rgba(55,93,251,0.1), 0 8px 32px rgba(55,93,251,0.08);
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
 }
 
 /* ── Buttons ───────────────────────────────────────────────── */
 .btn-primary {
-  background: linear-gradient(135deg, #375DFB 0%, #2c4fd4 100%);
+  background: #2563eb;
   color: white;
-  font-weight: 600;
-  font-size: 0.875rem;
-  padding: 0.5rem 1rem;
-  border-radius: 10px;
-  transition: all 0.2s;
-  border: 1px solid rgba(255,255,255,0.12);
-  box-shadow: 0 1px 4px rgba(55,93,251,0.4), inset 0 1px 0 rgba(255,255,255,0.12);
+  font-weight: 500;
+  font-size: 13px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  transition: all 0.1s;
+  border: none;
+  cursor: pointer;
 }
-.btn-primary:hover:not(:disabled) {
-  background: linear-gradient(135deg, #4169fc 0%, #375DFB 100%);
-  box-shadow: 0 4px 16px rgba(55,93,251,0.5), inset 0 1px 0 rgba(255,255,255,0.15);
-  transform: translateY(-1px);
-}
-.btn-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  transform: none;
-}
+.btn-primary:hover:not(:disabled) { background: #1d4ed8; }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .btn-secondary {
-  background: rgba(255,255,255,0.05);
-  color: #94a3b8;
+  background: #ffffff;
+  color: #374151;
   font-weight: 500;
-  font-size: 0.875rem;
-  padding: 0.5rem 1rem;
-  border-radius: 10px;
-  border: 1px solid rgba(255,255,255,0.08);
-  transition: all 0.2s;
+  font-size: 13px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+  transition: all 0.1s;
+  cursor: pointer;
 }
-.btn-secondary:hover {
-  background: rgba(255,255,255,0.08);
-  color: #e2e8f0;
-  border-color: rgba(255,255,255,0.12);
+.btn-secondary:hover { background: #f9fafb; border-color: #d1d5db; }
+
+.btn-danger {
+  color: #dc2626;
+  font-weight: 500;
+  font-size: 13px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  transition: all 0.1s;
+  cursor: pointer;
 }
+.btn-danger:hover { background: #fef2f2; border-color: #fecaca; }
 
 /* ── Inputs ────────────────────────────────────────────────── */
-.input {
-  background: var(--input-bg);
-  border: 1px solid var(--input-border);
-  color: var(--text-primary);
-  border-radius: 10px;
-  padding: 0.625rem 0.875rem;
+.t-input {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  color: #111827;
+  border-radius: 6px;
+  padding: 8px 12px;
   width: 100%;
-  font-size: 0.875rem;
-  transition: all 0.2s;
+  font-size: 14px;
+  transition: all 0.1s;
   outline: none;
+  height: 36px;
 }
-.input:focus {
-  border-color: #375DFB;
-  box-shadow: 0 0 0 3px rgba(55,93,251,0.15);
-  background: rgba(55,93,251,0.04);
+.t-input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px #eff6ff;
 }
-.input::placeholder { color: var(--text-faint); }
+.t-input::placeholder { color: #9ca3af; }
 
-.label {
-  font-size: 0.8125rem;
+.t-label {
+  font-size: 14px;
   font-weight: 500;
-  color: var(--text-muted);
-  margin-bottom: 0.375rem;
+  color: #374151;
+  margin-bottom: 4px;
   display: block;
 }
 
-/* ── Badges ────────────────────────────────────────────────── */
-.badge-success { @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-950 text-emerald-400 border border-emerald-900; }
-.badge-warning { @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-950 text-amber-400 border border-amber-900; }
-.badge-error   { @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-950 text-red-400 border border-red-900; }
-.badge-info    { @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-950 text-blue-400 border border-blue-900; }
-.badge-pending { @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-900 text-slate-400 border border-slate-800; }
+/* ── Badges (Tonder v2 subtle fills) ──────────────────────── */
+.t-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.t-badge-emerald { background: #f0fdf4; color: #15803d; box-shadow: inset 0 0 0 1px rgba(22,163,74,0.2); }
+.t-badge-blue    { background: #eff6ff; color: #1d4ed8; box-shadow: inset 0 0 0 1px rgba(59,130,246,0.2); }
+.t-badge-amber   { background: #fffbeb; color: #b45309; box-shadow: inset 0 0 0 1px rgba(217,119,6,0.2); }
+.t-badge-red     { background: #fef2f2; color: #b91c1c; box-shadow: inset 0 0 0 1px rgba(220,38,38,0.15); }
+.t-badge-gray    { background: #f9fafb; color: #4b5563; box-shadow: inset 0 0 0 1px rgba(107,114,128,0.2); }
+.t-badge-violet  { background: #f5f3ff; color: #6d28d9; box-shadow: inset 0 0 0 1px rgba(124,58,237,0.2); }
+.t-badge-orange  { background: #fff7ed; color: #c2410c; box-shadow: inset 0 0 0 1px rgba(234,88,12,0.2); }
 
-/* ── Gradient text ─────────────────────────────────────────── */
-.gradient-text {
-  background: linear-gradient(135deg, #375DFB, #818cf8);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+/* ── Tables (Tonder v2 style) ─────────────────────────────── */
+.t-table { width: 100%; border-collapse: separate; border-spacing: 0; }
+.t-table th {
+  text-align: left;
+  padding: 10px 16px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #6b7280;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f9fafb;
+  user-select: none;
+}
+.t-table td {
+  padding: 12px 16px;
+  font-size: 14px;
+  color: #374151;
+  border-bottom: 1px solid #f3f4f6;
+}
+.t-table tr:hover td { background: #f0f5ff; }
+.t-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ── Tabs (submodule style) ───────────────────────────────── */
+.t-tab {
+  padding: 12px 16px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: #9ca3af;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.1s;
+  background: transparent;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+}
+.t-tab:hover { color: #374151; }
+.t-tab.active { color: #2563eb; border-bottom-color: #2563eb; }
+
+/* ── Preset pills ─────────────────────────────────────────── */
+.preset {
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #6b7280;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.1s;
+}
+.preset:hover { background: #f3f4f6; color: #374151; }
+.preset.active { background: #eff6ff; color: #2563eb; }
+
+/* ── KPI metric ───────────────────────────────────────────── */
+.kpi-value {
+  font-size: 1.875rem;
+  font-weight: 600;
+  color: #111827;
+  line-height: 2.25rem;
+  font-variant-numeric: tabular-nums;
+}
+.kpi-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #6b7280;
 }
 
-/* ── Tonder grid background ────────────────────────────────── */
-.tonder-grid {
-  background-image:
-    linear-gradient(rgba(55,93,251,0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(55,93,251,0.05) 1px, transparent 1px);
-  background-size: 40px 40px;
+/* ── Progress bar ─────────────────────────────────────────── */
+.progress-track {
+  height: 6px;
+  background: #f3f4f6;
+  border-radius: 99px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  border-radius: 99px;
+  transition: width 0.5s ease;
 }
 
-/* ── Glow effects ──────────────────────────────────────────── */
-.glow-blue {
-  box-shadow: 0 0 40px rgba(55,93,251,0.25), 0 0 80px rgba(55,93,251,0.1);
+/* ── Fade-in animation ────────────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-in { animation: fadeIn 0.35s ease-out forwards; }
+.d1 { animation-delay: 0.05s; }
+.d2 { animation-delay: 0.10s; }
+.d3 { animation-delay: 0.15s; }
+.d4 { animation-delay: 0.20s; }
+.d5 { animation-delay: 0.25s; }
+
+/* ── Status dot ───────────────────────────────────────────── */
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
-/* ── Table rows ────────────────────────────────────────────── */
-.table-row-hover:hover {
-  background: rgba(55,93,251,0.04);
-}
-
-/* ── Sidebar active ────────────────────────────────────────── */
-.nav-active {
-  background: rgba(55,93,251,0.12);
-  color: #7b95fd;
-  border-right: 2px solid #375DFB;
-}
+/* ── Legacy compat (Tremor components still reference these) ── */
+.input { @apply t-input; }
+.label { @apply t-label; }
+.card  { @apply t-card; }
