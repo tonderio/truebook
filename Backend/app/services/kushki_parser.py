@@ -308,70 +308,59 @@ def parse_kushki(content: bytes, filename: str) -> Dict[str, Any]:
     }
 
 
+_MERGE_FIELDS = [
+    "tx_count", "gross_amount", "adjustments", "kushki_commission",
+    "iva_kushki_commission", "commission", "rolling_reserve",
+    "refund", "chargeback", "void", "manual_adj", "rr_released",
+    "net_deposit", "tonder_fee", "tonder_iva", "tonder_fee_iva",
+]
+
+
 def merge_kushki_results(results: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
     Consolidate multiple Kushki parsed outputs into a single clean monthly dataset.
-    This avoids duplicated rows when the month arrives split across many files.
+    Merges all 16 numeric fields (not just the original 5).
     """
-    daily_acc = defaultdict(lambda: {
-        "tx_count": 0.0,
-        "gross_amount": 0.0,
-        "commission": 0.0,
-        "rolling_reserve": 0.0,
-        "net_deposit": 0.0,
-    })
-    merchant_acc = defaultdict(lambda: {
-        "tx_count": 0.0,
-        "gross_amount": 0.0,
-        "commission": 0.0,
-        "rolling_reserve": 0.0,
-        "net_deposit": 0.0,
-    })
+    def _new_acc():
+        return {f: 0.0 for f in _MERGE_FIELDS}
+
+    daily_acc = defaultdict(_new_acc)
+    merchant_acc = defaultdict(_new_acc)
+    all_daily_detail = []
 
     for result in results:
         for row in result.get("daily_summary", []) or []:
             date = str(row.get("date", "")).strip()
             if not date:
                 continue
-            daily_acc[date]["tx_count"] += float(row.get("tx_count", 0) or 0)
-            daily_acc[date]["gross_amount"] += float(row.get("gross_amount", 0) or 0)
-            daily_acc[date]["commission"] += float(row.get("commission", 0) or 0)
-            daily_acc[date]["rolling_reserve"] += float(row.get("rolling_reserve", 0) or 0)
-            daily_acc[date]["net_deposit"] += float(row.get("net_deposit", 0) or 0)
+            for f in _MERGE_FIELDS:
+                daily_acc[date][f] += float(row.get(f, 0) or 0)
 
         for row in result.get("merchant_detail", []) or []:
             merchant = str(row.get("merchant_name", "unknown")).strip() or "unknown"
-            merchant_acc[merchant]["tx_count"] += float(row.get("tx_count", 0) or 0)
-            merchant_acc[merchant]["gross_amount"] += float(row.get("gross_amount", 0) or 0)
-            merchant_acc[merchant]["commission"] += float(row.get("commission", 0) or 0)
-            merchant_acc[merchant]["rolling_reserve"] += float(row.get("rolling_reserve", 0) or 0)
-            merchant_acc[merchant]["net_deposit"] += float(row.get("net_deposit", 0) or 0)
+            for f in _MERGE_FIELDS:
+                merchant_acc[merchant][f] += float(row.get(f, 0) or 0)
+
+        all_daily_detail.extend(result.get("merchant_daily_detail", []) or [])
 
     daily_summary = []
     for date, d in sorted(daily_acc.items(), key=lambda x: x[0]):
-        daily_summary.append({
-            "date": date,
-            "tx_count": int(round(d["tx_count"], 0)),
-            "gross_amount": round(d["gross_amount"], 6),
-            "commission": round(d["commission"], 6),
-            "rolling_reserve": round(d["rolling_reserve"], 6),
-            "net_deposit": round(d["net_deposit"], 6),
-        })
+        entry = {"date": date}
+        for f in _MERGE_FIELDS:
+            entry[f] = int(round(d[f])) if f == "tx_count" else round(d[f], 6)
+        daily_summary.append(entry)
 
     merchant_detail = []
     for merchant, d in sorted(merchant_acc.items(), key=lambda x: x[0].lower()):
-        merchant_detail.append({
-            "merchant_name": merchant,
-            "tx_count": int(round(d["tx_count"], 0)),
-            "gross_amount": round(d["gross_amount"], 6),
-            "commission": round(d["commission"], 6),
-            "rolling_reserve": round(d["rolling_reserve"], 6),
-            "net_deposit": round(d["net_deposit"], 6),
-        })
+        entry = {"merchant_name": merchant}
+        for f in _MERGE_FIELDS:
+            entry[f] = int(round(d[f])) if f == "tx_count" else round(d[f], 6)
+        merchant_detail.append(entry)
 
     total_net = round(sum(r["net_deposit"] for r in daily_summary), 6)
     return {
         "daily_summary": daily_summary,
         "merchant_detail": merchant_detail,
+        "merchant_daily_detail": all_daily_detail,
         "total_net_deposit": total_net,
     }
