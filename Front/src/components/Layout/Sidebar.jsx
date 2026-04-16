@@ -26,12 +26,12 @@ export default function Sidebar() {
 
   return (
     <aside
-      className="flex flex-col h-screen sticky top-0 bg-white border-r border-stone-200"
+      className="flex flex-col h-screen sticky top-0 bg-stone-50 border-r border-stone-200/60"
       style={{ width: 240, minWidth: 240 }}
     >
-      {/* Logo */}
+      {/* Icon only */}
       <div className="px-5 pt-5 pb-4">
-        <img src="/truebook-logo.svg" alt="TrueBook" className="h-7" />
+        <img src="/truebook-icon.svg" alt="TrueBook" className="h-8" />
       </div>
 
       {/* Nav */}
