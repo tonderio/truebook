@@ -71,6 +71,9 @@ KEYWORD_RULES: List[Tuple[str, Optional[str], List[str]]] = [
         # Use "SPEI. NVIO." (with delimiters) or rely on CLABE tier.
         "SPEI. NVIO.", "BITSO", "BITSO MEXICO", "BITSO HOLDINGS",
         "ALLVP", "FINTECIMAL", "CRYPTOBUYER",
+        # CampoBet liquidations arrive via Bitso/NVIO as Abonos (credit)
+        # to Banregio — these are acquirer deposits, not settlements.
+        "SPEI CAMPOBET",
     ]),
     ("unlimit_acquirer", "unlimit", [
         "UNLIMINT MX SAPI", "UNLIMINT", "UNLIMIT",
@@ -109,7 +112,7 @@ KEYWORD_RULES: List[Tuple[str, Optional[str], List[str]]] = [
     # "SPEI Revenue" is actually a transfer between Tonder's own accounts
     ("transfer_between_accounts", None, [
         "SPEI REVENUE", "REVENUE W", "TONDER BBVA", "TONDER BBV",
-        "REEMBOLSO CAMBIO",
+        "REEMBOLSO CAMBIO", "ABONO CAMBIO",
     ]),
 
     # ── Banking operations ─────────────────────────────────────────────
@@ -190,6 +193,11 @@ def classify_movement(
             if _normalize(token) in desc_norm:
                 # Special guard: STP acquirer only on inbound (abono)
                 if classification == "stp_acquirer":
+                    if movement_type != "abono" and (amount is None or amount <= 0):
+                        continue
+                # Special guard: Bitso acquirer — merchant name tokens (CAMPOBET)
+                # only match on Abono (credit). Cargo = settlement, handled below.
+                if classification == "bitso_acquirer" and _normalize(token) in ("SPEI CAMPOBET",):
                     if movement_type != "abono" and (amount is None or amount <= 0):
                         continue
                 # Special guard: Settlements only on outbound (cargo/debit)
