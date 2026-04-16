@@ -10,7 +10,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { classificationsApi } from '../api/client'
 import clsx from 'clsx'
 
-const TABS = ['Resumen', 'Banregio', 'Por Adquirente', 'Por Comercio']
+const TABS = ['Resumen', 'Banregio', 'Por Adquirente', 'Por Comercio', 'Auditoría']
 
 const CLS_LABELS = {
   kushki_acquirer: 'Kushki',
@@ -556,6 +556,123 @@ function MerchantTab({ processId }) {
   )
 }
 
+// ── Tab: Auditoría ────────────────────────────────────────────────────
+function AuditTab({ processId }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['audit', processId],
+    queryFn: () => resultsApi.audit(processId).then(r => r.data),
+  })
+  if (isLoading) return <Loader2 size={20} className="animate-spin text-stone-300 mx-auto mt-12" />
+  if (!data) return <p className="text-stone-400 text-sm text-center mt-12">Sin datos</p>
+
+  const VERDICT_STYLE = {
+    VERIFIED: { label: 'Verificado', cls: 't-badge t-badge-emerald' },
+    DISCREPANCY: { label: 'Discrepancia', cls: 't-badge t-badge-red' },
+    NO_ACQUIRER_REPORT: { label: 'Sin reporte', cls: 't-badge t-badge-gray' },
+    PARTIAL: { label: 'Parcial', cls: 't-badge t-badge-amber' },
+    NO_DATA: { label: 'Sin datos', cls: 't-badge t-badge-gray' },
+  }
+  const STATUS_ICON = {
+    MATCHED: { icon: '✓', color: 'text-blue-600' },
+    MATCHED_AMOUNT_ONLY: { icon: '≈', color: 'text-amber-600' },
+    UNMATCHED_ACQUIRER: { icon: '✗', color: 'text-red-600' },
+    UNMATCHED_BANREGIO: { icon: '?', color: 'text-red-600' },
+    BANREGIO_ONLY: { icon: '—', color: 'text-stone-400' },
+  }
+
+  const ov = VERDICT_STYLE[data.overall_verdict] || VERDICT_STYLE.NO_DATA
+
+  return (
+    <div className="space-y-4">
+      {/* Overall verdict */}
+      <div className="t-card flex items-center justify-between py-4">
+        <div>
+          <p className="text-sm font-medium text-stone-700">Veredicto general</p>
+          <p className="text-xs text-stone-400 mt-0.5">Cruce de depósitos de adquirentes vs estado de cuenta Banregio</p>
+        </div>
+        <span className={ov.cls}>{ov.label}</span>
+      </div>
+
+      {/* Per acquirer */}
+      {data.acquirers.map(acq => {
+        const s = acq.summary
+        const v = VERDICT_STYLE[s.verdict] || VERDICT_STYLE.NO_DATA
+        return (
+          <div key={acq.name} className="t-card">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <span className="t-badge t-badge-blue capitalize">{acq.name}</span>
+                <span className={v.cls}>{v.label}</span>
+              </div>
+              {s.acquirer_total != null && (
+                <div className="text-right text-xs text-stone-500">
+                  Adquirente: <Fmt value={s.acquirer_total} /> · Banregio: <Fmt value={s.banregio_total} /> · Delta: <Fmt value={s.delta} />
+                </div>
+              )}
+            </div>
+
+            {s.note && (
+              <p className="text-xs text-stone-400 mb-3">{s.note}</p>
+            )}
+
+            {acq.matches.length > 0 && (
+              <table className="t-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: 30 }}></th>
+                    <th>Fecha</th>
+                    {s.acquirer_total != null && <th className="text-right">Dep. Adquirente</th>}
+                    <th className="text-right">Abono Banregio</th>
+                    {s.acquirer_total != null && <th className="text-right">Delta</th>}
+                    <th>Estado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {acq.matches.map((m, i) => {
+                    const st = STATUS_ICON[m.status] || { icon: '?', color: 'text-stone-400' }
+                    return (
+                      <tr key={i}>
+                        <td className={`text-center font-bold ${st.color}`}>{st.icon}</td>
+                        <td className="text-stone-600 text-[13px]">{m.date}</td>
+                        {s.acquirer_total != null && (
+                          <td className="text-right text-[13px]">
+                            {m.acquirer_amount != null ? <Fmt value={m.acquirer_amount} /> : '—'}
+                          </td>
+                        )}
+                        <td className="text-right text-[13px]">
+                          {m.banregio_amount != null ? <Fmt value={m.banregio_amount} /> : '—'}
+                        </td>
+                        {s.acquirer_total != null && (
+                          <td className={`text-right text-[13px] font-medium ${
+                            m.delta === 0 ? 'text-stone-300' : 'text-red-600'
+                          }`}>
+                            <Fmt value={m.delta} />
+                          </td>
+                        )}
+                        <td className="text-[12px] text-stone-400">{m.status.replace(/_/g, ' ')}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
+
+            {/* Summary row */}
+            {s.matched > 0 && (
+              <div className="flex gap-4 mt-3 text-xs text-stone-500">
+                <span>{s.matched} conciliados</span>
+                {s.mismatched > 0 && <span className="text-red-600">{s.mismatched} con diferencia</span>}
+                {s.unmatched_acquirer > 0 && <span className="text-red-600">{s.unmatched_acquirer} sin match en Banregio</span>}
+                {s.unmatched_banregio > 0 && <span className="text-amber-600">{s.unmatched_banregio} sin match en adquirente</span>}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ── Main ──────────────────────────────────────────────────────────────
 export default function Results() {
   const { id } = useParams()
@@ -636,6 +753,7 @@ export default function Results() {
       {tab === 1 && <BanregioTab processId={id} />}
       {tab === 2 && <AcquirerTab processId={id} />}
       {tab === 3 && <MerchantTab processId={id} />}
+      {tab === 4 && <AuditTab processId={id} />}
     </div>
   )
 }

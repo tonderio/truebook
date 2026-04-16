@@ -67,6 +67,7 @@ export const resultsApi = {
   exportKushki: (id) => api.get(`/results/${id}/export/kushki`, { responseType: 'blob' }),
   exportBanregio: (id) => api.get(`/results/${id}/export/banregio`, { responseType: 'blob' }),
   exportReconciliation: (id) => api.get(`/results/${id}/export/reconciliation`, { responseType: 'blob' }),
+  audit: (id) => api.get(`/results/${id}/audit`),
 }
 
 // ── Classifications ────────────────────────────────────────────────────────

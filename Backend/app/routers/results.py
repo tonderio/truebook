@@ -11,12 +11,23 @@ from app.models.adjustment import RunAdjustment
 from app.models.classification import BanregioMovementClassification
 from app.services.aws_settlements import get_status as aws_status
 from app.services.auto_classifier import compute_coverage
+from app.services.warren_audit import audit_acquirer_vs_banregio
 from app.services.excel_exports import build_fees_export, build_kushki_export, build_banregio_export, build_reconciliation_export
 from app.models.alert import RunAlert
 from app.services.conciliation_engine import compute_adjusted_delta
 from typing import List
 
 router = APIRouter(prefix="/api/results", tags=["results"])
+
+
+@router.get("/{process_id}/audit")
+def get_audit_report(
+    process_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Warren Audit: cross-validate acquirer deposits vs Banregio movements."""
+    return audit_acquirer_vs_banregio(process_id, db)
 
 
 @router.get("/{process_id}/reconciliation-view")
