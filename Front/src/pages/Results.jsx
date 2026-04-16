@@ -92,22 +92,6 @@ function ResumenTab({ processId }) {
         </div>
       </div>
 
-      {/* Classification breakdown */}
-      <div className="t-card">
-        <p className="text-sm font-semibold text-stone-900 mb-4">Clasificacion de movimientos</p>
-        {byClass.length > 0 ? (
-          <ResponsiveContainer width="100%" height={Math.max(200, byClass.length * 32)}>
-            <BarChart data={byClass} layout="vertical" margin={{ left: 120, right: 20, top: 0, bottom: 0 }}>
-              <XAxis type="number" tick={{ fill: '#a8a29e', fontSize: 11 }} />
-              <YAxis type="category" dataKey="name" tick={{ fill: '#57534e', fontSize: 12 }} width={110} />
-              <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e7e5e4', borderRadius: 8 }} />
-              <Bar dataKey="value" fill="#1c1917" radius={[0, 4, 4, 0]} name="Movimientos" />
-            </BarChart>
-          </ResponsiveContainer>
-        ) : (
-          <p className="text-stone-400 text-sm">Sin clasificaciones</p>
-        )}
-      </div>
     </div>
   )
 }
