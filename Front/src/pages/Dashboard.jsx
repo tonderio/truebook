@@ -216,6 +216,7 @@ export default function Dashboard() {
             <thead>
               <tr>
                 <th>Nombre</th>
+                <th>Cuenta</th>
                 <th>Periodo</th>
                 <th>Estado</th>
                 <th>Reconciliacion</th>
@@ -228,6 +229,7 @@ export default function Dashboard() {
               {recent.map(p => (
                 <tr key={p.id}>
                   <td className="font-medium text-gray-900">{p.name}</td>
+                  <td><span className="t-badge t-badge-blue">{p.bank_account || 'Banregio'}</span></td>
                   <td className="text-gray-500">
                     {p.period_year}-{String(p.period_month).padStart(2, '0')}
                   </td>

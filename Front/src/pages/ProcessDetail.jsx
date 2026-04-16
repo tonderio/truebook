@@ -164,7 +164,7 @@ export default function ProcessDetail() {
           </div>
           <h1 className="text-2xl font-semibold text-gray-900">{proc.name}</h1>
           <p className="text-gray-500 text-sm mt-0.5">
-            Período: {proc.period_year}-{String(proc.period_month).padStart(2, '0')} ·
+            Cuenta: {proc.bank_account || 'Banregio'} · Período: {proc.period_year}-{String(proc.period_month).padStart(2, '0')} ·
             Adquirentes: {(proc.acquirers || []).join(', ')}
           </p>
         </div>

@@ -11,6 +11,7 @@ class AccountingProcess(Base):
     name = Column(String, nullable=False)
     period_year = Column(Integer, nullable=False)
     period_month = Column(Integer, nullable=False)
+    bank_account = Column(String, default="Banregio")
     acquirers = Column(JSON, default=["OXXOPay", "Bitso", "Kushki", "STP"])
     status = Column(String, default="pending")
     # pending | running | completed | reconciled | failed

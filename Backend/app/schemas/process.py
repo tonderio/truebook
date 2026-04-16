@@ -7,6 +7,7 @@ class ProcessCreate(BaseModel):
     name: str
     period_year: int
     period_month: int
+    bank_account: str = "Banregio"
     acquirers: Optional[List[str]] = ["OXXOPay", "Bitso", "Kushki", "STP"]
 
 
@@ -15,6 +16,7 @@ class ProcessOut(BaseModel):
     name: str
     period_year: int
     period_month: int
+    bank_account: Optional[str] = "Banregio"
     acquirers: Optional[List[str]]
     status: str
     current_stage: Optional[str]

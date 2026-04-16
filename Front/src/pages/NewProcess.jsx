@@ -9,6 +9,7 @@ const MONTHS = [
   'Enero','Febrero','Marzo','Abril','Mayo','Junio',
   'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'
 ]
+const BANK_ACCOUNTS = ['Banregio']
 const ACQUIRERS = ['OXXOPay', 'Bitso', 'Kushki', 'STP']
 
 const ACQ_COLORS = {
@@ -27,6 +28,7 @@ export default function NewProcess() {
     name: `Cierre ${MONTHS[now.getMonth()]} ${now.getFullYear()}`,
     period_year: now.getFullYear(),
     period_month: now.getMonth() + 1,
+    bank_account: 'Banregio',
     acquirers: [...ACQUIRERS],
   })
 
@@ -99,6 +101,25 @@ export default function NewProcess() {
           </div>
           <p className="text-xs text-gray-400 mt-2">
             Ventana: 1 {MONTHS[form.period_month - 1]} 00:00 UTC-6 — {form.period_month === 2 ? 28 : 31} {MONTHS[form.period_month - 1]} 23:59 UTC-6
+          </p>
+        </div>
+
+        {/* Bank account */}
+        <div>
+          <label className="t-label flex items-center gap-1.5">
+            Cuenta bancaria a conciliar
+          </label>
+          <select
+            className="t-input"
+            value={form.bank_account}
+            onChange={e => setForm(f => ({ ...f, bank_account: e.target.value }))}
+          >
+            {BANK_ACCOUNTS.map(b => (
+              <option key={b} value={b}>{b}</option>
+            ))}
+          </select>
+          <p className="text-xs text-gray-400 mt-2">
+            Fuente de verdad financiera contra la cual se concilian los adquirentes
           </p>
         </div>
 

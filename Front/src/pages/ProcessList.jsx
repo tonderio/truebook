@@ -61,6 +61,7 @@ export default function ProcessList() {
               <TableRow>
                 <TableHeaderCell>ID</TableHeaderCell>
                 <TableHeaderCell>Nombre</TableHeaderCell>
+                <TableHeaderCell>Cuenta</TableHeaderCell>
                 <TableHeaderCell>Periodo</TableHeaderCell>
                 <TableHeaderCell>Adquirentes</TableHeaderCell>
                 <TableHeaderCell>Estado</TableHeaderCell>
@@ -75,6 +76,9 @@ export default function ProcessList() {
                   <TableCell className="text-gray-500">#{p.id}</TableCell>
                   <TableCell>
                     <span className="font-medium text-gray-900">{p.name}</span>
+                  </TableCell>
+                  <TableCell>
+                    <Badge color="blue" size="xs">{p.bank_account || 'Banregio'}</Badge>
                   </TableCell>
                   <TableCell className="text-gray-600">
                     {p.period_year}-{String(p.period_month).padStart(2, '0')}

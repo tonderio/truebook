@@ -48,6 +48,7 @@ def create_process(
         name=body.name,
         period_year=body.period_year,
         period_month=body.period_month,
+        bank_account=body.bank_account,
         acquirers=body.acquirers,
         created_by=current_user.id,
     )
