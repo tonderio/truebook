@@ -6,7 +6,7 @@ COPY package*.json ./
 RUN npm install
 
 # Set API URL before copying source so Vite picks it up
-ENV VITE_API_URL=https://truebook-production-79ae.up.railway.app
+ENV VITE_API_URL=https://truebook-production.up.railway.app
 
 COPY . .
 
