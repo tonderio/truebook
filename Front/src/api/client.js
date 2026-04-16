@@ -66,5 +66,6 @@ export const resultsApi = {
   exportFees: (id) => api.get(`/results/${id}/export/fees`, { responseType: 'blob' }),
   exportKushki: (id) => api.get(`/results/${id}/export/kushki`, { responseType: 'blob' }),
   exportBanregio: (id) => api.get(`/results/${id}/export/banregio`, { responseType: 'blob' }),
+  exportReconciliation: (id) => api.get(`/results/${id}/export/reconciliation`, { responseType: 'blob' }),
   awsStatus: () => api.get('/results/aws/status'),
 }

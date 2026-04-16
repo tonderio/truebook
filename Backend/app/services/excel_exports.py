@@ -655,3 +655,215 @@ def build_banregio_export(process, banregio_result, kushki_result, conciliation_
 
     filename = f"BANREGIO_{_month_name_upper(process.period_month)}_{process.period_year}_CONCILIADO_v2.xlsx"
     return filename, _save_workbook(wb)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# RECONCILIATION EXPORT — Full reconciliation view with checkmarks
+# ═══════════════════════════════════════════════════════════════════════
+
+CLS_LABELS = {
+    "kushki_acquirer": "Kushki",
+    "bitso_acquirer": "Bitso",
+    "unlimit_acquirer": "Unlimit",
+    "pagsmile_acquirer": "Pagsmile",
+    "stp_acquirer": "STP",
+    "settlement_to_merchant": "Dispersión a comercio",
+    "revenue": "Revenue Tonder",
+    "investment": "Inversión",
+    "tax": "ISR",
+    "bank_expense": "Comisión bancaria",
+    "currency_sale": "Venta de divisas",
+    "transfer_between_accounts": "Traspaso entre cuentas",
+    "unclassified": "SIN CLASIFICAR",
+    "ignored": "Ignorado",
+}
+
+
+def build_reconciliation_export(
+    process,
+    movements_data: list,
+    summary: dict,
+    acquirer_data: dict,
+    alerts: list,
+) -> tuple:
+    """
+    Export the full reconciliation view as Excel.
+
+    Sheets:
+    1. Reconciliación Banregio — every movement with checkmark + classification
+    2. Por Adquirente — breakdown per acquirer with merchants
+    3. Alertas — pending items and reconciliation alerts
+    """
+    wb = Workbook()
+    month_name = _month_name_upper(process.period_month)
+    year = process.period_year
+    bank = getattr(process, "bank_account", "Banregio") or "Banregio"
+
+    green_fill = PatternFill("solid", fgColor="E8F5E9")
+    red_fill = PatternFill("solid", fgColor="FFEBEE")
+    amber_fill = PatternFill("solid", fgColor="FFF8E1")
+    gray_fill = PatternFill("solid", fgColor="F5F5F5")
+
+    # ── Sheet 1: Reconciliación Banregio ──────────────────────────────
+    ws = wb.active
+    ws.title = "Reconciliación Banregio"
+
+    # Title
+    ws.cell(row=1, column=1, value=f"RECONCILIACIÓN {bank.upper()} — {month_name} {year}")
+    ws.cell(row=1, column=1).font = Font(bold=True, size=12)
+
+    cov = summary.get("coverage_pct", 0)
+    classified = summary.get("classified", 0)
+    total = summary.get("total_movements", 0)
+    unclassified = summary.get("unclassified", 0)
+    ws.cell(row=2, column=1,
+            value=f"{classified} de {total} movimientos reconciliados ({cov}%) · {unclassified} pendientes")
+
+    # Headers
+    headers = ["✓", "Fecha", "Descripción", "Cargo", "Abono", "Clasificación", "Adquirente", "Método", "Estado"]
+    for i, h in enumerate(headers, 1):
+        ws.cell(row=4, column=i, value=h)
+    _styled_header_row(ws, 4, 1, len(headers))
+
+    # Data rows
+    for r_idx, m in enumerate(movements_data, 5):
+        is_recon = m.get("is_reconciled", False)
+        cls_label = CLS_LABELS.get(m.get("classification", ""), m.get("classification", ""))
+
+        ws.cell(row=r_idx, column=1, value="✓" if is_recon else "✗")
+        ws.cell(row=r_idx, column=2, value=m.get("date", ""))
+        ws.cell(row=r_idx, column=3, value=m.get("description", ""))
+        ws.cell(row=r_idx, column=4, value=m.get("debit") if m.get("debit", 0) > 0 else None)
+        ws.cell(row=r_idx, column=5, value=m.get("credit") if m.get("credit", 0) > 0 else None)
+        ws.cell(row=r_idx, column=6, value=cls_label)
+        ws.cell(row=r_idx, column=7, value=m.get("acquirer") or "—")
+        ws.cell(row=r_idx, column=8, value=m.get("method") or "—")
+        ws.cell(row=r_idx, column=9, value="Reconciliado" if is_recon else "PENDIENTE")
+
+        # Color row
+        fill = green_fill if is_recon else red_fill
+        for col in range(1, len(headers) + 1):
+            ws.cell(row=r_idx, column=col).fill = fill
+
+        # Format numbers
+        for col in [4, 5]:
+            ws.cell(row=r_idx, column=col).number_format = '#,##0.00'
+
+    _autowidth(ws)
+
+    # ── Sheet 2: Por Adquirente ───────────────────────────────────────
+    ws2 = wb.create_sheet("Por Adquirente")
+    ws2.cell(row=1, column=1, value=f"DESGLOSE POR ADQUIRENTE — {month_name} {year}")
+    ws2.cell(row=1, column=1).font = Font(bold=True, size=12)
+
+    row = 3
+    acquirers = acquirer_data.get("acquirers", [])
+    for acq in acquirers:
+        name = acq.get("name", "").upper()
+        deps = acq.get("deposits", [])
+        total_amt = acq.get("total_amount", 0)
+
+        ws2.cell(row=row, column=1, value=f"{name} — {len(deps)} depósitos — ${total_amt:,.2f} MXN")
+        ws2.cell(row=row, column=1).font = Font(bold=True, size=10)
+        row += 1
+
+        # Deposit headers
+        dep_headers = ["Fecha", "Descripción", "Monto"]
+        for i, h in enumerate(dep_headers, 1):
+            ws2.cell(row=row, column=i, value=h)
+        _styled_header_row(ws2, row, 1, len(dep_headers))
+        row += 1
+
+        for dep in deps:
+            ws2.cell(row=row, column=1, value=dep.get("date", ""))
+            ws2.cell(row=row, column=2, value=dep.get("description", ""))
+            ws2.cell(row=row, column=3, value=dep.get("amount", 0))
+            ws2.cell(row=row, column=3).number_format = '#,##0.00'
+            row += 1
+
+        # Merchant detail if available
+        merchants = acq.get("merchants", [])
+        if merchants:
+            row += 1
+            ws2.cell(row=row, column=1, value="Desglose por comercio")
+            ws2.cell(row=row, column=1).font = Font(bold=True, size=9)
+            row += 1
+            merch_headers = ["Comercio", "# Txns", "Monto Bruto", "Comisión", "Depósito Neto"]
+            for i, h in enumerate(merch_headers, 1):
+                ws2.cell(row=row, column=i, value=h)
+            _styled_header_row(ws2, row, 1, len(merch_headers))
+            row += 1
+            for m in sorted(merchants, key=lambda x: _num(x.get("net_deposit", 0)), reverse=True):
+                ws2.cell(row=row, column=1, value=m.get("merchant_name", ""))
+                ws2.cell(row=row, column=2, value=int(_num(m.get("tx_count", 0))))
+                ws2.cell(row=row, column=3, value=_num(m.get("gross_amount", 0)))
+                ws2.cell(row=row, column=4, value=_num(m.get("commission", 0)))
+                ws2.cell(row=row, column=5, value=_num(m.get("net_deposit", 0)))
+                for col in [3, 4, 5]:
+                    ws2.cell(row=row, column=col).number_format = '#,##0.00'
+                row += 1
+
+        row += 2  # spacing between acquirers
+
+    _autowidth(ws2)
+
+    # ── Sheet 3: Alertas ──────────────────────────────────────────────
+    ws3 = wb.create_sheet("Alertas")
+    ws3.cell(row=1, column=1, value=f"ALERTAS DE RECONCILIACIÓN — {month_name} {year}")
+    ws3.cell(row=1, column=1).font = Font(bold=True, size=12)
+
+    ws3.cell(row=2, column=1,
+             value=f"Cobertura: {cov}% · {unclassified} movimientos pendientes de clasificar")
+
+    # Pending movements
+    ws3.cell(row=4, column=1, value="MOVIMIENTOS PENDIENTES DE RECONCILIAR")
+    ws3.cell(row=4, column=1).font = Font(bold=True, size=10, color="CC0000")
+
+    pend_headers = ["#", "Fecha", "Descripción", "Cargo", "Abono", "Acción requerida"]
+    for i, h in enumerate(pend_headers, 1):
+        ws3.cell(row=5, column=i, value=h)
+    _styled_header_row(ws3, 5, 1, len(pend_headers))
+
+    pend_row = 6
+    pend_count = 0
+    for m in movements_data:
+        if not m.get("is_reconciled", False):
+            pend_count += 1
+            ws3.cell(row=pend_row, column=1, value=pend_count)
+            ws3.cell(row=pend_row, column=2, value=m.get("date", ""))
+            ws3.cell(row=pend_row, column=3, value=m.get("description", ""))
+            ws3.cell(row=pend_row, column=4, value=m.get("debit") if m.get("debit", 0) > 0 else None)
+            ws3.cell(row=pend_row, column=5, value=m.get("credit") if m.get("credit", 0) > 0 else None)
+            ws3.cell(row=pend_row, column=6, value="Clasificar manualmente o ejecutar Warren AI")
+            for col in [4, 5]:
+                ws3.cell(row=pend_row, column=col).number_format = '#,##0.00'
+            for col in range(1, len(pend_headers) + 1):
+                ws3.cell(row=pend_row, column=col).fill = red_fill
+            pend_row += 1
+
+    # System alerts
+    if alerts:
+        pend_row += 2
+        ws3.cell(row=pend_row, column=1, value="ALERTAS DEL SISTEMA")
+        ws3.cell(row=pend_row, column=1).font = Font(bold=True, size=10)
+        pend_row += 1
+        alert_headers = ["Nivel", "Tipo", "Título", "Mensaje"]
+        for i, h in enumerate(alert_headers, 1):
+            ws3.cell(row=pend_row, column=i, value=h)
+        _styled_header_row(ws3, pend_row, 1, len(alert_headers))
+        pend_row += 1
+        for a in alerts:
+            ws3.cell(row=pend_row, column=1, value=a.get("alert_level", ""))
+            ws3.cell(row=pend_row, column=2, value=a.get("alert_type", ""))
+            ws3.cell(row=pend_row, column=3, value=a.get("title", ""))
+            ws3.cell(row=pend_row, column=4, value=a.get("message", ""))
+            level = a.get("alert_level", "")
+            fill = red_fill if level == "CRITICAL" else amber_fill if level in ("WARNING", "UNCLASSIFIED") else gray_fill
+            for col in range(1, 5):
+                ws3.cell(row=pend_row, column=col).fill = fill
+            pend_row += 1
+
+    _autowidth(ws3)
+
+    filename = f"RECONCILIACION_{bank.upper()}_{month_name}_{year}.xlsx"
+    return filename, _save_workbook(wb)

@@ -405,29 +405,62 @@ function MerchantTab({ processId }) {
 export default function Results() {
   const { id } = useParams()
   const [tab, setTab] = useState(0)
+  const [exporting, setExporting] = useState(false)
 
   const { data: proc } = useQuery({
     queryKey: ['process', id],
     queryFn: () => processApi.get(id).then(r => r.data),
   })
 
+  async function handleExport() {
+    if (exporting) return
+    try {
+      setExporting(true)
+      const response = await resultsApi.exportReconciliation(id)
+      const disposition = response.headers?.['content-disposition']
+      let filename = `RECONCILIACION_${id}.xlsx`
+      if (disposition) {
+        const m = disposition.match(/filename\*?=(?:UTF-8''|"?)([^";]+)/i)
+        if (m?.[1]) filename = decodeURIComponent(m[1].replace(/"/g, '').trim())
+      }
+      const url = window.URL.createObjectURL(new Blob([response.data]))
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+    } catch { /* ignore */ } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <div className="px-8 py-6" style={{ maxWidth: 1420 }}>
       {/* Header */}
-      <div className="mb-1">
-        <div className="flex items-center gap-2 text-stone-400 text-sm mb-1">
-          <Link to="/processes" className="hover:text-stone-600">Corridas</Link>
-          <ChevronRight size={12} />
-          <Link to={`/processes/${id}`} className="hover:text-stone-600">{proc?.name}</Link>
-          <ChevronRight size={12} />
-          <span className="text-stone-700">Resultados</span>
+      <div className="flex items-center justify-between mb-1">
+        <div>
+          <div className="flex items-center gap-2 text-stone-400 text-sm mb-1">
+            <Link to="/processes" className="hover:text-stone-600">Corridas</Link>
+            <ChevronRight size={12} />
+            <Link to={`/processes/${id}`} className="hover:text-stone-600">{proc?.name}</Link>
+            <ChevronRight size={12} />
+            <span className="text-stone-700">Resultados</span>
+          </div>
+          <h1 className="text-xl font-semibold text-stone-900">Reconciliacion</h1>
+          {proc && (
+            <p className="text-sm text-stone-500 mt-0.5">
+              {proc.bank_account || 'Banregio'} · {proc.period_year}-{String(proc.period_month).padStart(2, '0')} · {proc.name}
+            </p>
+          )}
         </div>
-        <h1 className="text-xl font-semibold text-stone-900">Reconciliacion</h1>
-        {proc && (
-          <p className="text-sm text-stone-500 mt-0.5">
-            {proc.bank_account || 'Banregio'} · {proc.period_year}-{String(proc.period_month).padStart(2, '0')} · {proc.name}
-          </p>
-        )}
+        <button onClick={handleExport} disabled={exporting} className="btn-secondary flex items-center gap-2">
+          {exporting
+            ? <><Loader2 size={14} className="animate-spin" /> Exportando...</>
+            : <><Download size={14} /> Exportar Excel</>
+          }
+        </button>
       </div>
 
       {/* Tabs */}

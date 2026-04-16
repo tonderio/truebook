@@ -11,7 +11,8 @@ from app.models.adjustment import RunAdjustment
 from app.models.classification import BanregioMovementClassification
 from app.services.aws_settlements import get_status as aws_status
 from app.services.auto_classifier import compute_coverage
-from app.services.excel_exports import build_fees_export, build_kushki_export, build_banregio_export
+from app.services.excel_exports import build_fees_export, build_kushki_export, build_banregio_export, build_reconciliation_export
+from app.models.alert import RunAlert
 from app.services.conciliation_engine import compute_adjusted_delta
 from typing import List
 
@@ -380,4 +381,84 @@ def export_banregio_excel(
     )
 
     filename, content = build_banregio_export(process, banregio, kushki, conciliations)
+    return _xlsx_response(filename, content)
+
+
+@router.get("/{process_id}/export/reconciliation")
+def export_reconciliation_excel(
+    process_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Export the full reconciliation view as Excel with checkmarks and alerts."""
+    process = db.query(AccountingProcess).filter(AccountingProcess.id == process_id).first()
+    if not process:
+        raise HTTPException(status_code=404, detail="Process not found")
+
+    # Get reconciliation view data
+    banregio = db.query(BanregioResult).filter(BanregioResult.process_id == process_id).first()
+    if not banregio or not banregio.movements:
+        raise HTTPException(status_code=404, detail="No Banregio data found")
+
+    classifications = db.query(BanregioMovementClassification).filter(
+        BanregioMovementClassification.process_id == process_id
+    ).all()
+    cls_map = {c.movement_index: c for c in classifications}
+
+    movements_data = []
+    for idx, mov in enumerate(banregio.movements):
+        cls = cls_map.get(idx)
+        classification = cls.classification if cls else "unclassified"
+        acquirer = cls.acquirer if cls else None
+        method = cls.classification_method if cls else None
+        is_reconciled = classification != "unclassified"
+        movements_data.append({
+            "index": idx,
+            "date": mov.get("date", ""),
+            "description": mov.get("description", ""),
+            "credit": float(mov.get("credit", 0) or 0),
+            "debit": float(mov.get("debit", 0) or 0),
+            "classification": classification,
+            "acquirer": acquirer,
+            "is_reconciled": is_reconciled,
+            "method": method,
+        })
+
+    all_cls = [{"classification": c.classification} for c in classifications]
+    summary = compute_coverage(all_cls) if all_cls else {
+        "total_movements": len(banregio.movements),
+        "classified": 0, "unclassified": len(banregio.movements),
+        "ignored": 0, "coverage_pct": 0.0, "by_classification": {},
+    }
+
+    # Acquirer breakdown
+    acquirer_groups = {}
+    for cls in classifications:
+        if not cls.acquirer:
+            continue
+        if cls.acquirer not in acquirer_groups:
+            acquirer_groups[cls.acquirer] = {"name": cls.acquirer, "deposits": [], "total_amount": 0}
+        mov = banregio.movements[cls.movement_index] if cls.movement_index < len(banregio.movements) else {}
+        amount = float(mov.get("credit", 0) or 0)
+        acquirer_groups[cls.acquirer]["deposits"].append({
+            "date": mov.get("date", ""), "description": mov.get("description", ""), "amount": amount,
+        })
+        acquirer_groups[cls.acquirer]["total_amount"] += amount
+
+    kushki = db.query(KushkiResult).filter(KushkiResult.process_id == process_id).first()
+    if kushki and "kushki" in acquirer_groups:
+        acquirer_groups["kushki"]["merchants"] = kushki.merchant_detail or []
+
+    acquirer_data = {
+        "acquirers": sorted(acquirer_groups.values(), key=lambda a: -a["total_amount"]),
+    }
+
+    # Alerts
+    alert_rows = db.query(RunAlert).filter(RunAlert.process_id == process_id).all()
+    alerts = [
+        {"alert_level": a.alert_level, "alert_type": a.alert_type, "title": a.title, "message": a.message}
+        for a in alert_rows
+    ]
+
+    filename, content = build_reconciliation_export(process, movements_data, summary, acquirer_data, alerts)
     return _xlsx_response(filename, content)
