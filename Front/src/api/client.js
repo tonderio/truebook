@@ -67,5 +67,12 @@ export const resultsApi = {
   exportKushki: (id) => api.get(`/results/${id}/export/kushki`, { responseType: 'blob' }),
   exportBanregio: (id) => api.get(`/results/${id}/export/banregio`, { responseType: 'blob' }),
   exportReconciliation: (id) => api.get(`/results/${id}/export/reconciliation`, { responseType: 'blob' }),
-  awsStatus: () => api.get('/results/aws/status'),
+}
+
+// ── Classifications ────────────────────────────────────────────────────────
+export const classificationsApi = {
+  classify: (processId, movementIndex, data) =>
+    api.put(`/classifications/${processId}/${movementIndex}`, data),
+  autoClassify: (processId) => api.post(`/classifications/${processId}/auto`),
+  coverage: (processId) => api.get(`/classifications/${processId}/coverage`),
 }

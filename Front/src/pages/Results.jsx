@@ -5,7 +5,9 @@ import { resultsApi, processApi } from '../api/client'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts'
-import { ChevronRight, Loader2, CheckCircle2, XCircle, Download, ChevronDown } from 'lucide-react'
+import { ChevronRight, Loader2, CheckCircle2, XCircle, Download, ChevronDown, Pencil } from 'lucide-react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { classificationsApi } from '../api/client'
 import clsx from 'clsx'
 
 const TABS = ['Resumen', 'Banregio', 'Por Adquirente', 'Por Comercio']
@@ -110,6 +112,129 @@ function ResumenTab({ processId }) {
   )
 }
 
+// ── Classification options for the dropdown ───────────────────────────
+const CLS_OPTIONS = [
+  { value: 'kushki_acquirer', label: 'Kushki', acquirer: 'kushki' },
+  { value: 'bitso_acquirer', label: 'Bitso', acquirer: 'bitso' },
+  { value: 'unlimit_acquirer', label: 'Unlimit', acquirer: 'unlimit' },
+  { value: 'pagsmile_acquirer', label: 'Pagsmile', acquirer: 'pagsmile' },
+  { value: 'stp_acquirer', label: 'STP', acquirer: 'stp' },
+  { value: 'settlement_to_merchant', label: 'Dispersión' },
+  { value: 'revenue', label: 'Revenue' },
+  { value: 'investment', label: 'Inversión' },
+  { value: 'tax', label: 'ISR' },
+  { value: 'bank_expense', label: 'Comisión bancaria' },
+  { value: 'currency_sale', label: 'Venta divisas' },
+  { value: 'transfer_between_accounts', label: 'Traspaso' },
+  { value: 'ignored', label: 'Ignorar' },
+]
+
+// ── Inline classify dropdown ──────────────────────────────────────────
+function ClassifyDropdown({ processId, movementIndex, currentCls, onDone }) {
+  const [open, setOpen] = useState(false)
+  const [notes, setNotes] = useState('')
+  const [showNotes, setShowNotes] = useState(false)
+  const qc = useQueryClient()
+
+  const mutation = useMutation({
+    mutationFn: ({ classification, acquirer }) =>
+      classificationsApi.classify(processId, movementIndex, {
+        classification,
+        acquirer: acquirer || null,
+        notes: notes || null,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['recon-view'] })
+      qc.invalidateQueries({ queryKey: ['acquirer-breakdown'] })
+      setOpen(false)
+      setShowNotes(false)
+      if (onDone) onDone()
+    },
+  })
+
+  function handleSelect(opt) {
+    if (opt.value === 'ignored') {
+      setShowNotes(true)
+      return
+    }
+    mutation.mutate({ classification: opt.value, acquirer: opt.acquirer })
+  }
+
+  function handleIgnore() {
+    if (!notes.trim() || notes.trim().length < 3) return
+    mutation.mutate({ classification: 'ignored', acquirer: null })
+  }
+
+  if (!open) {
+    const isUnclassified = currentCls === 'unclassified'
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className={`t-badge ${CLS_BADGE[currentCls] || 't-badge-gray'} cursor-pointer hover:opacity-80 transition-opacity`}
+        title={isUnclassified ? 'Clasificar este movimiento' : 'Reclasificar'}
+      >
+        {CLS_LABELS[currentCls] || currentCls}
+        {isUnclassified && <Pencil size={10} className="ml-1" />}
+      </button>
+    )
+  }
+
+  return (
+    <div className="relative">
+      {!showNotes ? (
+        <div className="absolute z-30 top-0 left-0 bg-white border border-stone-200 rounded-lg shadow-lg py-1 w-48 max-h-64 overflow-y-auto">
+          <div className="px-3 py-1.5 text-[10px] font-semibold text-stone-400 uppercase tracking-wider">
+            Clasificar como
+          </div>
+          {CLS_OPTIONS.map(opt => (
+            <button
+              key={opt.value}
+              onClick={() => handleSelect(opt)}
+              disabled={mutation.isPending}
+              className="w-full text-left px-3 py-1.5 text-[13px] text-stone-700 hover:bg-stone-50 transition-colors flex items-center gap-2"
+            >
+              <span className={`t-badge ${CLS_BADGE[opt.value] || 't-badge-gray'}`} style={{ fontSize: 10 }}>
+                {opt.label}
+              </span>
+            </button>
+          ))}
+          <div className="border-t border-stone-100 mt-1 pt-1">
+            <button
+              onClick={() => setOpen(false)}
+              className="w-full text-left px-3 py-1.5 text-[12px] text-stone-400 hover:text-stone-600"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="absolute z-30 top-0 left-0 bg-white border border-stone-200 rounded-lg shadow-lg p-3 w-56">
+          <p className="text-[11px] font-semibold text-stone-500 mb-1">Razon para ignorar</p>
+          <input
+            className="t-input text-[12px] h-8 mb-2"
+            placeholder="Ej: Comision bancaria recurrente"
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            autoFocus
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={handleIgnore}
+              disabled={!notes.trim() || notes.trim().length < 3 || mutation.isPending}
+              className="btn-primary text-[11px] px-3 py-1"
+            >
+              {mutation.isPending ? 'Guardando...' : 'Ignorar'}
+            </button>
+            <button onClick={() => { setShowNotes(false); setOpen(false) }} className="text-[11px] text-stone-400">
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Tab: Banregio ─────────────────────────────────────────────────────
 function BanregioTab({ processId }) {
   const [filter, setFilter] = useState('all')
@@ -199,9 +324,11 @@ function BanregioTab({ processId }) {
                     {m.credit > 0 ? <Fmt value={m.credit} /> : ''}
                   </td>
                   <td>
-                    <span className={`t-badge ${CLS_BADGE[m.classification] || 't-badge-gray'}`}>
-                      {CLS_LABELS[m.classification] || m.classification}
-                    </span>
+                    <ClassifyDropdown
+                      processId={processId}
+                      movementIndex={m.index}
+                      currentCls={m.classification}
+                    />
                   </td>
                   <td className="text-stone-500 text-[13px]">{m.acquirer || '—'}</td>
                 </tr>
