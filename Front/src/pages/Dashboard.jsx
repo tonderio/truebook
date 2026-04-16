@@ -16,7 +16,7 @@ import {
 } from 'recharts'
 
 const MONTH_NAMES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
-const PIE_COLORS = ['#047857', '#1c1917', '#f59e0b', '#ef4444', '#d1d5db']
+const PIE_COLORS = ['#047857', '#2F1503', '#f59e0b', '#ef4444', '#d1d5db']
 
 function KpiCard({ label, value, icon: Icon, color, sub, delay = '' }) {
   return (
@@ -136,15 +136,15 @@ export default function Dashboard() {
               <AreaChart data={chartData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="gBlue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#1c1917" stopOpacity={0.15} />
-                    <stop offset="95%" stopColor="#1c1917" stopOpacity={0} />
+                    <stop offset="5%" stopColor="#2F1503" stopOpacity={0.15} />
+                    <stop offset="95%" stopColor="#2F1503" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <XAxis dataKey="month" tick={{ fill: '#a8a29e', fontSize: 11 }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fill: '#a8a29e', fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
                 <Tooltip content={<ChartTooltip />} />
-                <Area type="monotone" dataKey="Corridas" stroke="#1c1917" strokeWidth={2}
-                  fill="url(#gBlue)" dot={{ fill: '#1c1917', r: 3, strokeWidth: 0 }} />
+                <Area type="monotone" dataKey="Corridas" stroke="#2F1503" strokeWidth={2}
+                  fill="url(#gBlue)" dot={{ fill: '#2F1503', r: 3, strokeWidth: 0 }} />
               </AreaChart>
             </ResponsiveContainer>
           ) : (
@@ -243,7 +243,7 @@ export default function Dashboard() {
                             style={{
                               width: `${p.coverage_pct}%`,
                               background: p.coverage_pct >= 100 ? '#047857'
-                                : p.coverage_pct >= 50 ? '#1c1917' : '#ef4444',
+                                : p.coverage_pct >= 50 ? '#2F1503' : '#ef4444',
                             }}
                           />
                         </div>

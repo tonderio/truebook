@@ -441,6 +441,9 @@ def export_reconciliation_excel(
         "classified": 0, "unclassified": len(banregio.movements),
         "ignored": 0, "coverage_pct": 0.0, "by_classification": {},
     }
+    # Opening balance from Banregio summary (if available)
+    banregio_summary = banregio.summary or {}
+    summary["opening_balance"] = float(banregio_summary.get("opening_balance", 0) or 0)
 
     # Acquirer breakdown
     acquirer_groups = {}

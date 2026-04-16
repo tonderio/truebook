@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, ListChecks, Plus, LogOut,
   SlidersHorizontal, Bot, AlertTriangle,
-  Settings, ArrowLeftRight, CreditCard,
+  Settings, ArrowLeftRight, CreditCard, Server,
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import clsx from 'clsx'
@@ -13,8 +13,7 @@ const NAV = [
   { label: 'Corridas', to: '/processes', icon: ListChecks },
   { label: 'Nueva corrida', to: '/processes/new', icon: Plus },
   { type: 'divider' },
-  { label: 'Ajustes', to: '/processes', icon: SlidersHorizontal, soon: true },
-  { label: 'Bitso', to: '/processes', icon: ArrowLeftRight, soon: true },
+  { label: 'Conexiones SFTP', to: '/sftp', icon: Server },
   { type: 'divider' },
   { label: 'Warren AI', to: '/processes', icon: Bot, tag: 'AI' },
   { label: 'Alertas', to: '/processes', icon: AlertTriangle, soon: true },
@@ -101,7 +100,7 @@ export default function Sidebar() {
         <div className="flex items-center gap-3">
           <div
             className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-semibold text-white shrink-0"
-            style={{ background: '#1c1917' }}
+            style={{ background: '#2F1503' }}
           >
             {user?.full_name?.[0]?.toUpperCase() || 'U'}
           </div>

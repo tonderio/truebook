@@ -92,7 +92,7 @@ export default function Login() {
         </form>
 
         <p className="text-[11px] text-gray-300 text-center mt-8">
-          Plataforma interna · TrueBook © {new Date().getFullYear()}
+          Built by Tonder's AI Lab
         </p>
       </div>
     </div>

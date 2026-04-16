@@ -40,6 +40,8 @@ export const processApi = {
   run: (id) => api.post(`/processes/${id}/run`),
   progress: (id) => api.get(`/processes/${id}/progress`),
   delete: (id) => api.delete(`/processes/${id}`),
+  reconcile: (id) => api.post(`/processes/${id}/reconcile`),
+  unreconcile: (id) => api.post(`/processes/${id}/unreconcile`),
 }
 
 // ── Files ───────────────────────────────────────────────────────────────────
@@ -76,4 +78,22 @@ export const classificationsApi = {
     api.put(`/classifications/${processId}/${movementIndex}`, data),
   autoClassify: (processId) => api.post(`/classifications/${processId}/auto`),
   coverage: (processId) => api.get(`/classifications/${processId}/coverage`),
+}
+
+// ── SFTP ───────────────────────────────────────────────────────────
+export const sftpApi = {
+  status: () => api.get('/sftp/status'),
+  test: (acquirer) => api.post(`/sftp/${acquirer}/test`),
+  logs: (limit = 50) => api.get(`/sftp/logs?limit=${limit}`),
+  downloads: (limit = 50) => api.get(`/sftp/downloads?limit=${limit}`),
+}
+
+// ── Adjustments ────────────────────────────────────────────────────────────
+export const adjustmentsApi = {
+  summary: (processId) => api.get(`/adjustments/${processId}/summary`),
+  list: (processId, status) => api.get(`/adjustments/${processId}${status ? `?status=${status}` : ''}`),
+  create: (processId, data) => api.post(`/adjustments/${processId}`, data),
+  approve: (adjustmentId, reviewNotes) => api.put(`/adjustments/${adjustmentId}/approve`, { review_notes: reviewNotes }),
+  reject: (adjustmentId, reviewNotes) => api.put(`/adjustments/${adjustmentId}/reject`, { review_notes: reviewNotes }),
+  remove: (adjustmentId) => api.delete(`/adjustments/${adjustmentId}`),
 }

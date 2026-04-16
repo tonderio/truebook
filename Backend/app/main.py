@@ -1,7 +1,7 @@
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import auth, processes, files, results, classifications, adjustments, alerts, bitso, warren
+from app.routers import auth, processes, files, results, classifications, adjustments, alerts, bitso, warren, sftp
 
 app = FastAPI(
     title="TrueBook — FinOps Reconciliation API",
@@ -26,6 +26,7 @@ app.include_router(adjustments.router)
 app.include_router(alerts.router)
 app.include_router(bitso.router)
 app.include_router(warren.router)
+app.include_router(sftp.router)
 
 
 @app.get("/health")

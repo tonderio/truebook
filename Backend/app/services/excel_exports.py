@@ -785,8 +785,8 @@ def build_reconciliation_export(
     ws.sheet_properties.tabColor = BLUE
 
     # Title block
-    _brand_title(ws, 1, f"TrueBook — Reconciliación {bank}", 9)
-    _brand_subtitle(ws, 2, f"{month_name} {year}  |  {process.name}", 9)
+    _brand_title(ws, 1, f"TrueBook — Reconciliación {bank}", 10)
+    _brand_subtitle(ws, 2, f"{month_name} {year}  |  {process.name}", 10)
     ws.row_dimensions[1].height = 28
     ws.row_dimensions[2].height = 18
 
@@ -807,7 +807,7 @@ def build_reconciliation_export(
 
     # Headers
     h_row = 7
-    headers = ["", "Fecha", "Descripción", "Cargo", "Abono", "Clasificación", "Adquirente", "Método", "Estado"]
+    headers = ["", "Fecha", "Descripción", "Cargo", "Abono", "Saldo", "Clasificación", "Adquirente", "Método", "Estado"]
     for i, h in enumerate(headers, 1):
         ws.cell(row=h_row, column=i, value=h)
     _brand_header(ws, h_row, 1, len(headers))
@@ -815,21 +815,43 @@ def build_reconciliation_export(
     ws.column_dimensions['A'].width = 4
     ws.column_dimensions['C'].width = 45
 
+    # Compute opening balance from summary if available, otherwise 0
+    opening_balance = _num(summary.get("opening_balance", 0))
+
+    # Opening Balance row
+    ob_row = h_row + 1
+    ws.cell(row=ob_row, column=3, value="SALDO INICIAL (Opening Balance)").font = Font(
+        name="Calibri", bold=True, size=10, color=BLUE_DARK)
+    ws.cell(row=ob_row, column=6, value=opening_balance)
+    ws.cell(row=ob_row, column=6).number_format = money_fmt
+    ws.cell(row=ob_row, column=6).font = Font(name="Calibri", bold=True, size=10, color=BLUE_DARK)
+    for col in range(1, len(headers) + 1):
+        ws.cell(row=ob_row, column=col).fill = PatternFill("solid", fgColor=BLUE_LIGHT)
+        ws.cell(row=ob_row, column=col).border = thin_border
+
     # Data rows
-    for r_idx, m in enumerate(movements_data, h_row + 1):
+    running_balance = opening_balance
+    for r_idx, m in enumerate(movements_data, h_row + 2):
         is_recon = m.get("is_reconciled", False)
         cls_label = CLS_LABELS.get(m.get("classification", ""), m.get("classification", ""))
+
+        debit = _num(m.get("debit", 0))
+        credit = _num(m.get("credit", 0))
+        running_balance += (credit - debit)
 
         ws.cell(row=r_idx, column=1, value="✓" if is_recon else "✗").font = Font(
             name="Calibri", bold=True, size=10, color=BLUE if is_recon else RED_TX)
         ws.cell(row=r_idx, column=2, value=m.get("date", "")).font = body_font
         ws.cell(row=r_idx, column=3, value=m.get("description", "")).font = body_font
-        ws.cell(row=r_idx, column=4, value=m.get("debit") if m.get("debit", 0) > 0 else None)
-        ws.cell(row=r_idx, column=5, value=m.get("credit") if m.get("credit", 0) > 0 else None)
-        ws.cell(row=r_idx, column=6, value=cls_label).font = Font(name="Calibri", size=9, color=BLUE_DARK)
-        ws.cell(row=r_idx, column=7, value=m.get("acquirer") or "").font = Font(name="Calibri", size=9, color=GRAY_500)
-        ws.cell(row=r_idx, column=8, value=m.get("method") or "").font = Font(name="Calibri", size=9, color=GRAY_300)
-        estado_cell = ws.cell(row=r_idx, column=9, value="Reconciliado" if is_recon else "PENDIENTE")
+        ws.cell(row=r_idx, column=4, value=debit if debit > 0 else None)
+        ws.cell(row=r_idx, column=5, value=credit if credit > 0 else None)
+        ws.cell(row=r_idx, column=6, value=round(running_balance, 2))
+        ws.cell(row=r_idx, column=6).number_format = money_fmt
+        ws.cell(row=r_idx, column=6).font = Font(name="Calibri", size=10, color=DARK)
+        ws.cell(row=r_idx, column=7, value=cls_label).font = Font(name="Calibri", size=9, color=BLUE_DARK)
+        ws.cell(row=r_idx, column=8, value=m.get("acquirer") or "").font = Font(name="Calibri", size=9, color=GRAY_500)
+        ws.cell(row=r_idx, column=9, value=m.get("method") or "").font = Font(name="Calibri", size=9, color=GRAY_300)
+        estado_cell = ws.cell(row=r_idx, column=10, value="Reconciliado" if is_recon else "PENDIENTE")
         estado_cell.font = Font(name="Calibri", bold=True, size=9,
                                 color=BLUE if is_recon else RED_TX)
 
@@ -849,6 +871,17 @@ def build_reconciliation_export(
                     cell.font = Font(name="Calibri", size=10, color=RED_TX)
                 elif col == 5 and cell.value:
                     cell.font = Font(name="Calibri", size=10, color=MID)
+
+    # Closing Balance row
+    cb_row = h_row + 2 + len(movements_data)
+    ws.cell(row=cb_row, column=3, value="SALDO FINAL (Closing Balance)").font = Font(
+        name="Calibri", bold=True, size=10, color=BLUE_DARK)
+    ws.cell(row=cb_row, column=6, value=round(running_balance, 2))
+    ws.cell(row=cb_row, column=6).number_format = money_fmt
+    ws.cell(row=cb_row, column=6).font = Font(name="Calibri", bold=True, size=10, color=BLUE_DARK)
+    for col in range(1, len(headers) + 1):
+        ws.cell(row=cb_row, column=col).fill = PatternFill("solid", fgColor=BLUE_LIGHT)
+        ws.cell(row=cb_row, column=col).border = thin_border
 
     _autowidth(ws, max_width=50)
 

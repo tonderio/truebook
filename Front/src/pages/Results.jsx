@@ -7,10 +7,10 @@ import {
 } from 'recharts'
 import { ChevronRight, Loader2, CheckCircle2, XCircle, Download, ChevronDown, Pencil } from 'lucide-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { classificationsApi } from '../api/client'
+import { classificationsApi, adjustmentsApi } from '../api/client'
 import clsx from 'clsx'
 
-const TABS = ['Resumen', 'Banregio', 'Por Adquirente', 'Por Comercio', 'Auditoría']
+const TABS = ['Resumen', 'Banregio', 'Por Adquirente', 'Por Comercio', 'Auditoría', 'Ajustes']
 
 const CLS_LABELS = {
   kushki_acquirer: 'Kushki',
@@ -243,7 +243,7 @@ function BanregioTab({ processId }) {
           <div className="progress-track h-2">
             <div className="progress-fill" style={{
               width: `${s.coverage_pct}%`,
-              background: s.coverage_pct >= 100 ? '#047857' : s.coverage_pct >= 80 ? '#1c1917' : '#dc2626',
+              background: s.coverage_pct >= 100 ? '#047857' : s.coverage_pct >= 80 ? '#2F1503' : '#dc2626',
             }} />
           </div>
         </div>
@@ -556,6 +556,270 @@ function MerchantTab({ processId }) {
   )
 }
 
+// ── Tab: Ajustes ──────────────────────────────────────────────────────
+
+const ADJ_TYPES = [
+  { value: 'DELAY_DEPOSIT', label: 'Depósito en tránsito' },
+  { value: 'FEE_CORRECTION', label: 'Corrección de comisión' },
+  { value: 'AUTOREFUND_OFFSET', label: 'Offset por autorefund' },
+  { value: 'DUPLICATE_PAYMENT', label: 'Pago duplicado' },
+  { value: 'BANK_ERROR', label: 'Error bancario' },
+  { value: 'ACQUIRER_ERROR', label: 'Error de adquirente' },
+  { value: 'MANUAL_BITSO', label: 'Ajuste Bitso manual' },
+  { value: 'OTHER', label: 'Otro' },
+]
+
+const ADJ_AFFECTS = [
+  { value: 'expected', label: 'Esperado (adquirente)' },
+  { value: 'received', label: 'Recibido (Banregio)' },
+  { value: 'delta', label: 'Delta (diferencia)' },
+]
+
+function AjustesTab({ processId }) {
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState({
+    adjustment_type: 'FEE_CORRECTION',
+    direction: 'SUBTRACT',
+    amount: '',
+    affects: 'expected',
+    merchant_name: '',
+    description: '',
+    evidence_url: '',
+  })
+  const qc = useQueryClient()
+
+  const { data: summary, isLoading: loadingSummary } = useQuery({
+    queryKey: ['adj-summary', processId],
+    queryFn: () => adjustmentsApi.summary(processId).then(r => r.data),
+  })
+  const { data: adjustments = [], isLoading } = useQuery({
+    queryKey: ['adjustments', processId],
+    queryFn: () => adjustmentsApi.list(processId).then(r => r.data),
+  })
+
+  const createMut = useMutation({
+    mutationFn: (data) => adjustmentsApi.create(processId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['adjustments'] })
+      qc.invalidateQueries({ queryKey: ['adj-summary'] })
+      setShowForm(false)
+      setForm({ adjustment_type: 'FEE_CORRECTION', direction: 'SUBTRACT', amount: '', affects: 'expected', merchant_name: '', description: '', evidence_url: '' })
+    },
+  })
+  const approveMut = useMutation({
+    mutationFn: ({ id, notes }) => adjustmentsApi.approve(id, notes),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['adjustments'] }); qc.invalidateQueries({ queryKey: ['adj-summary'] }) },
+  })
+  const rejectMut = useMutation({
+    mutationFn: ({ id, notes }) => adjustmentsApi.reject(id, notes),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['adjustments'] }); qc.invalidateQueries({ queryKey: ['adj-summary'] }) },
+  })
+  const deleteMut = useMutation({
+    mutationFn: (id) => adjustmentsApi.remove(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['adjustments'] }); qc.invalidateQueries({ queryKey: ['adj-summary'] }) },
+  })
+
+  if (isLoading) return <Loader2 size={20} className="animate-spin text-stone-300 mx-auto mt-12" />
+
+  const s = summary || { total: 0, by_status: { pending: 0, approved: 0, rejected: 0 }, net_adjustment: 0 }
+
+  function handleCreate(e) {
+    e.preventDefault()
+    createMut.mutate({
+      ...form,
+      amount: parseFloat(form.amount),
+    })
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* KPIs */}
+      <div className="grid grid-cols-4 gap-4">
+        <div className="t-card">
+          <p className="kpi-label">Total ajustes</p>
+          <p className="kpi-value">{s.total}</p>
+        </div>
+        <div className="t-card">
+          <p className="kpi-label">Pendientes</p>
+          <p className="kpi-value" style={{ color: s.by_status.pending > 0 ? '#92400E' : '#78716C' }}>{s.by_status.pending}</p>
+        </div>
+        <div className="t-card">
+          <p className="kpi-label">Aprobados</p>
+          <p className="kpi-value" style={{ color: '#047857' }}>{s.by_status.approved}</p>
+        </div>
+        <div className="t-card">
+          <p className="kpi-label">Ajuste neto</p>
+          <p className="kpi-value"><Fmt value={s.net_adjustment} /></p>
+        </div>
+      </div>
+
+      {/* Create button */}
+      <div className="flex justify-end">
+        <button onClick={() => setShowForm(!showForm)} className="btn-primary flex items-center gap-2">
+          {showForm ? 'Cancelar' : '+ Crear ajuste'}
+        </button>
+      </div>
+
+      {/* Create form */}
+      {showForm && (
+        <form onSubmit={handleCreate} className="t-card space-y-4">
+          <p className="text-sm font-semibold text-stone-900">Nuevo ajuste</p>
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="t-label">Tipo</label>
+              <select className="t-input" value={form.adjustment_type} onChange={e => setForm(f => ({ ...f, adjustment_type: e.target.value }))}>
+                {ADJ_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="t-label">Dirección</label>
+              <div className="flex gap-2 mt-1">
+                {['ADD', 'SUBTRACT'].map(d => (
+                  <button key={d} type="button"
+                    onClick={() => setForm(f => ({ ...f, direction: d }))}
+                    className={clsx('px-4 py-2 rounded-lg text-sm font-medium border transition-all',
+                      form.direction === d ? 'bg-stone-900 text-white border-stone-900' : 'bg-white text-stone-500 border-stone-200'
+                    )}>
+                    {d === 'ADD' ? '+ Sumar' : '− Restar'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="t-label">Monto (MXN)</label>
+              <input type="number" step="0.01" className="t-input" placeholder="0.00"
+                value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} required />
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="t-label">Afecta</label>
+              <select className="t-input" value={form.affects} onChange={e => setForm(f => ({ ...f, affects: e.target.value }))}>
+                {ADJ_AFFECTS.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="t-label">Comercio (opcional)</label>
+              <input className="t-input" placeholder="Ej: AFUN" value={form.merchant_name}
+                onChange={e => setForm(f => ({ ...f, merchant_name: e.target.value }))} />
+            </div>
+            <div>
+              <label className="t-label">Evidencia URL (opcional)</label>
+              <input className="t-input" placeholder="https://..." value={form.evidence_url}
+                onChange={e => setForm(f => ({ ...f, evidence_url: e.target.value }))} />
+            </div>
+          </div>
+          <div>
+            <label className="t-label">Descripción (min. 10 caracteres)</label>
+            <textarea className="t-input" style={{ height: 'auto', minHeight: 60 }} placeholder="Explica la razón del ajuste..."
+              value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} required />
+          </div>
+          {createMut.error && (
+            <p className="text-sm text-red-600">{createMut.error.response?.data?.detail || 'Error al crear ajuste'}</p>
+          )}
+          <div className="flex justify-end">
+            <button type="submit" disabled={createMut.isPending || !form.amount || form.description.length < 10}
+              className="btn-primary">
+              {createMut.isPending ? 'Creando...' : 'Crear ajuste'}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* Adjustments table */}
+      {adjustments.length === 0 ? (
+        <div className="t-card text-center py-8">
+          <p className="text-stone-400 text-sm">Sin ajustes registrados para esta corrida</p>
+          <p className="text-stone-300 text-xs mt-1">Crea un ajuste para explicar diferencias en la reconciliación</p>
+        </div>
+      ) : (
+        <div className="t-card p-0 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="t-table">
+              <thead>
+                <tr>
+                  <th>Tipo</th>
+                  <th>Dir.</th>
+                  <th className="text-right">Monto</th>
+                  <th>Afecta</th>
+                  <th>Comercio</th>
+                  <th>Descripción</th>
+                  <th>Estado</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {adjustments.map(adj => {
+                  const typeLabel = ADJ_TYPES.find(t => t.value === adj.adjustment_type)?.label || adj.adjustment_type
+                  return (
+                    <tr key={adj.id}>
+                      <td className="text-[13px] text-stone-700 whitespace-nowrap">{typeLabel}</td>
+                      <td>
+                        <span className={`t-badge ${adj.direction === 'ADD' ? 't-badge-emerald' : 't-badge-red'}`}>
+                          {adj.direction === 'ADD' ? '+ Sumar' : '− Restar'}
+                        </span>
+                      </td>
+                      <td className="text-right font-medium text-[13px]"><Fmt value={adj.amount} /></td>
+                      <td className="text-[13px] text-stone-500">{adj.affects}</td>
+                      <td className="text-[13px] text-stone-500">{adj.merchant_name || '—'}</td>
+                      <td className="text-[13px] text-stone-600 max-w-xs truncate">{adj.description}</td>
+                      <td>
+                        <span className={`t-badge ${
+                          adj.status === 'approved' ? 't-badge-emerald' :
+                          adj.status === 'rejected' ? 't-badge-red' : 't-badge-amber'
+                        }`}>
+                          {adj.status === 'approved' ? 'Aprobado' : adj.status === 'rejected' ? 'Rechazado' : 'Pendiente'}
+                        </span>
+                      </td>
+                      <td>
+                        {adj.status === 'pending' && (
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => approveMut.mutate({ id: adj.id })}
+                              disabled={approveMut.isPending}
+                              className="text-[11px] px-2 py-1 rounded bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"
+                            >
+                              Aprobar
+                            </button>
+                            <button
+                              onClick={() => rejectMut.mutate({ id: adj.id })}
+                              disabled={rejectMut.isPending}
+                              className="text-[11px] px-2 py-1 rounded bg-red-50 text-red-700 hover:bg-red-100 transition-colors"
+                            >
+                              Rechazar
+                            </button>
+                            <button
+                              onClick={() => deleteMut.mutate(adj.id)}
+                              disabled={deleteMut.isPending}
+                              className="text-[11px] px-2 py-1 rounded text-stone-400 hover:text-red-600 transition-colors"
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                        )}
+                        {adj.status !== 'pending' && adj.reviewed_by && (
+                          <span className="text-[11px] text-stone-400">
+                            por #{adj.reviewed_by}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          {(approveMut.error || rejectMut.error) && (
+            <div className="px-4 py-2 text-sm text-red-600 bg-red-50 border-t border-red-100">
+              {(approveMut.error || rejectMut.error)?.response?.data?.detail || 'Error en la operación'}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Tab: Auditoría ────────────────────────────────────────────────────
 function AuditTab({ processId }) {
   const { data, isLoading } = useQuery({
@@ -678,11 +942,37 @@ export default function Results() {
   const { id } = useParams()
   const [tab, setTab] = useState(0)
   const [exporting, setExporting] = useState(false)
+  const qc = useQueryClient()
 
   const { data: proc } = useQuery({
     queryKey: ['process', id],
     queryFn: () => processApi.get(id).then(r => r.data),
   })
+
+  const { data: coverage } = useQuery({
+    queryKey: ['coverage', id],
+    queryFn: () => classificationsApi.coverage(id).then(r => r.data),
+  })
+
+  const { data: adjSummary } = useQuery({
+    queryKey: ['adj-summary', id],
+    queryFn: () => adjustmentsApi.summary(id).then(r => r.data),
+  })
+
+  const reconcileMut = useMutation({
+    mutationFn: () => processApi.reconcile(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['process', id] }) },
+  })
+
+  const unreconcileMut = useMutation({
+    mutationFn: () => processApi.unreconcile(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['process', id] }) },
+  })
+
+  const isReconciled = proc?.status === 'reconciled'
+  const coveragePct = coverage?.coverage_pct ?? 0
+  const pendingAdj = adjSummary?.by_status?.pending ?? 0
+  const canReconcile = coveragePct >= 100 && pendingAdj === 0 && !isReconciled
 
   async function handleExport() {
     if (exporting) return
@@ -727,12 +1017,51 @@ export default function Results() {
             </p>
           )}
         </div>
-        <button onClick={handleExport} disabled={exporting} className="btn-secondary flex items-center gap-2">
-          {exporting
-            ? <><Loader2 size={14} className="animate-spin" /> Exportando...</>
-            : <><Download size={14} /> Exportar Excel</>
-          }
-        </button>
+        <div className="flex items-center gap-2">
+          {isReconciled ? (
+            <>
+              <span className="t-badge t-badge-emerald flex items-center gap-1.5 px-3 py-1.5">
+                <CheckCircle2 size={13} /> Reconciliado
+              </span>
+              <button
+                onClick={() => unreconcileMut.mutate()}
+                disabled={unreconcileMut.isPending}
+                className="text-xs text-stone-400 hover:text-stone-600 transition-colors"
+              >
+                Deshacer
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => reconcileMut.mutate()}
+              disabled={!canReconcile || reconcileMut.isPending}
+              className="btn-primary flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+              title={
+                coveragePct < 100
+                  ? `Cobertura: ${coveragePct.toFixed(1)}% (requiere 100%)`
+                  : pendingAdj > 0
+                  ? `${pendingAdj} ajustes pendientes de aprobación`
+                  : 'Marcar como reconciliado'
+              }
+            >
+              {reconcileMut.isPending
+                ? <><Loader2 size={14} className="animate-spin" /> Reconciliando...</>
+                : <><CheckCircle2 size={14} /> Reconciliar</>
+              }
+            </button>
+          )}
+          <button onClick={handleExport} disabled={exporting} className="btn-secondary flex items-center gap-2">
+            {exporting
+              ? <><Loader2 size={14} className="animate-spin" /> Exportando...</>
+              : <><Download size={14} /> Exportar Excel</>
+            }
+          </button>
+        </div>
+        {reconcileMut.error && (
+          <p className="text-xs text-red-600 text-right mt-1">
+            {reconcileMut.error.response?.data?.detail || 'Error al reconciliar'}
+          </p>
+        )}
       </div>
 
       {/* Tabs */}
@@ -754,6 +1083,7 @@ export default function Results() {
       {tab === 2 && <AcquirerTab processId={id} />}
       {tab === 3 && <MerchantTab processId={id} />}
       {tab === 4 && <AuditTab processId={id} />}
+      {tab === 5 && <AjustesTab processId={id} />}
     </div>
   )
 }
