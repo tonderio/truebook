@@ -788,19 +788,34 @@ def build_reconciliation_export(
             ws2.cell(row=row, column=1, value="Desglose por comercio")
             ws2.cell(row=row, column=1).font = Font(bold=True, size=9)
             row += 1
-            merch_headers = ["Comercio", "# Txns", "Monto Bruto", "Comisión", "Depósito Neto"]
+            merch_headers = [
+                "Comercio", "# Txns", "Monto Bruto", "Bruto Ajustes",
+                "Com. Kushki", "IVA Kushki", "Com. Kushki + IVA",
+                "RR Retenido", "Devolución", "Contracargo", "Cancelación",
+                "Manual", "RR Liberado", "Depósito Neto",
+                "Com. Tonder s/IVA", "IVA (16%)", "Com. Tonder c/IVA",
+            ]
             for i, h in enumerate(merch_headers, 1):
                 ws2.cell(row=row, column=i, value=h)
             _styled_header_row(ws2, row, 1, len(merch_headers))
             row += 1
+            merch_fields = [
+                "merchant_name", "tx_count", "gross_amount", "adjustments",
+                "kushki_commission", "iva_kushki_commission", "commission",
+                "rolling_reserve", "refund", "chargeback", "void",
+                "manual_adj", "rr_released", "net_deposit",
+                "tonder_fee", "tonder_iva", "tonder_fee_iva",
+            ]
             for m in sorted(merchants, key=lambda x: _num(x.get("net_deposit", 0)), reverse=True):
-                ws2.cell(row=row, column=1, value=m.get("merchant_name", ""))
-                ws2.cell(row=row, column=2, value=int(_num(m.get("tx_count", 0))))
-                ws2.cell(row=row, column=3, value=_num(m.get("gross_amount", 0)))
-                ws2.cell(row=row, column=4, value=_num(m.get("commission", 0)))
-                ws2.cell(row=row, column=5, value=_num(m.get("net_deposit", 0)))
-                for col in [3, 4, 5]:
-                    ws2.cell(row=row, column=col).number_format = '#,##0.00'
+                for ci, field in enumerate(merch_fields, 1):
+                    val = m.get(field, 0)
+                    if field == "merchant_name":
+                        ws2.cell(row=row, column=ci, value=val or "")
+                    elif field == "tx_count":
+                        ws2.cell(row=row, column=ci, value=int(_num(val)))
+                    else:
+                        ws2.cell(row=row, column=ci, value=_num(val))
+                        ws2.cell(row=row, column=ci).number_format = '#,##0.00'
                 row += 1
 
         row += 2  # spacing between acquirers

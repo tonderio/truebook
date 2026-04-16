@@ -417,28 +417,50 @@ function AcquirerSection({ acq }) {
               <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2">
                 Desglose por comercio
               </p>
+              <div className="overflow-x-auto">
               <table className="t-table">
                 <thead>
                   <tr>
                     <th>Comercio</th>
                     <th className="text-right"># Txns</th>
                     <th className="text-right">Bruto</th>
-                    <th className="text-right">Comision</th>
-                    <th className="text-right">Deposito neto</th>
+                    <th className="text-right">Ajustes</th>
+                    <th className="text-right">Com. Kushki</th>
+                    <th className="text-right">IVA Kushki</th>
+                    <th className="text-right">Com+IVA</th>
+                    <th className="text-right">RR Retenido</th>
+                    <th className="text-right">Refund</th>
+                    <th className="text-right">Chargeback</th>
+                    <th className="text-right">RR Liberado</th>
+                    <th className="text-right">Dep. Neto</th>
+                    <th className="text-right">Com. Tonder</th>
+                    <th className="text-right">IVA 16%</th>
+                    <th className="text-right">Tonder c/IVA</th>
                   </tr>
                 </thead>
                 <tbody>
                   {acq.merchants.sort((a, b) => (b.net_deposit || 0) - (a.net_deposit || 0)).map((m, i) => (
                     <tr key={i}>
-                      <td className="text-stone-700 font-medium text-[13px]">{m.merchant_name}</td>
+                      <td className="text-stone-700 font-medium text-[13px] whitespace-nowrap">{m.merchant_name}</td>
                       <td className="text-right text-stone-500">{Number(m.tx_count || 0).toLocaleString()}</td>
                       <td className="text-right"><Fmt value={m.gross_amount} /></td>
+                      <td className="text-right"><Fmt value={m.adjustments} /></td>
+                      <td className="text-right"><Fmt value={m.kushki_commission} /></td>
+                      <td className="text-right"><Fmt value={m.iva_kushki_commission} /></td>
                       <td className="text-right text-amber-700"><Fmt value={m.commission} /></td>
+                      <td className="text-right"><Fmt value={m.rolling_reserve} /></td>
+                      <td className="text-right"><Fmt value={m.refund} /></td>
+                      <td className="text-right text-red-700"><Fmt value={m.chargeback} /></td>
+                      <td className="text-right"><Fmt value={m.rr_released} /></td>
                       <td className="text-right text-emerald-800 font-medium"><Fmt value={m.net_deposit} /></td>
+                      <td className="text-right"><Fmt value={m.tonder_fee} /></td>
+                      <td className="text-right"><Fmt value={m.tonder_iva} /></td>
+                      <td className="text-right text-stone-900 font-medium"><Fmt value={m.tonder_fee_iva} /></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
         </div>
@@ -483,30 +505,52 @@ function MerchantTab({ processId }) {
         <p className="text-sm font-semibold text-stone-900">{merchants.length} comercios</p>
       </div>
       <div className="max-h-[500px] overflow-y-auto">
+        <div className="overflow-x-auto">
         <table className="t-table">
           <thead className="sticky top-0 bg-white z-10">
             <tr>
               <th>Comercio</th>
               <th>Adquirente</th>
               <th className="text-right"># Txns</th>
-              <th className="text-right">Monto bruto</th>
-              <th className="text-right">Comision</th>
-              <th className="text-right">Deposito neto</th>
+              <th className="text-right">Bruto</th>
+              <th className="text-right">Ajustes</th>
+              <th className="text-right">Com. Kushki</th>
+              <th className="text-right">IVA Kushki</th>
+              <th className="text-right">Com+IVA</th>
+              <th className="text-right">RR Retenido</th>
+              <th className="text-right">Refund</th>
+              <th className="text-right">Chargeback</th>
+              <th className="text-right">RR Liberado</th>
+              <th className="text-right">Dep. Neto</th>
+              <th className="text-right">Com. Tonder</th>
+              <th className="text-right">IVA 16%</th>
+              <th className="text-right">Tonder c/IVA</th>
             </tr>
           </thead>
           <tbody>
             {merchants.map((m, i) => (
               <tr key={i}>
-                <td className="text-stone-800 font-medium text-[13px]">{m.merchant_name}</td>
+                <td className="text-stone-800 font-medium text-[13px] whitespace-nowrap">{m.merchant_name}</td>
                 <td><span className="t-badge t-badge-blue capitalize">{m.acquirer}</span></td>
                 <td className="text-right text-stone-500">{Number(m.tx_count || 0).toLocaleString()}</td>
                 <td className="text-right"><Fmt value={m.gross_amount} /></td>
+                <td className="text-right"><Fmt value={m.adjustments} /></td>
+                <td className="text-right"><Fmt value={m.kushki_commission} /></td>
+                <td className="text-right"><Fmt value={m.iva_kushki_commission} /></td>
                 <td className="text-right text-amber-700"><Fmt value={m.commission} /></td>
+                <td className="text-right"><Fmt value={m.rolling_reserve} /></td>
+                <td className="text-right"><Fmt value={m.refund} /></td>
+                <td className="text-right text-red-700"><Fmt value={m.chargeback} /></td>
+                <td className="text-right"><Fmt value={m.rr_released} /></td>
                 <td className="text-right text-emerald-800 font-medium"><Fmt value={m.net_deposit} /></td>
+                <td className="text-right"><Fmt value={m.tonder_fee} /></td>
+                <td className="text-right"><Fmt value={m.tonder_iva} /></td>
+                <td className="text-right text-stone-900 font-medium"><Fmt value={m.tonder_fee_iva} /></td>
               </tr>
             ))}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   )
