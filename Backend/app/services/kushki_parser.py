@@ -48,7 +48,7 @@ COLUMN_MAP = {
     "suma de kushki_commission": "kushki_commission",
     "suma de iva_kushki_commission": "iva_kushki_commission",
     "iva kushki": "iva_kushki_commission",
-    "iva (16%)": "iva_kushki_commission",
+    "iva (16%)": "tonder_iva",
     "rolling reserve": "rolling_reserve",
     "rolling_reserve": "rolling_reserve",
     "rr retenido": "rolling_reserve",
@@ -250,50 +250,59 @@ def parse_kushki(content: bytes, filename: str) -> Dict[str, Any]:
             "row_count": 0,
         }
 
-    # Daily summary.
-    daily = (
-        df.groupby("date", as_index=False)
-        .agg(
-            tx_count=("tx_count", "sum"),
-            gross_amount=("gross_amount", "sum"),
-            commission=("commission", "sum"),
-            rolling_reserve=("rolling_reserve", "sum"),
-            net_deposit=("net_deposit", "sum"),
-        )
-    )
+    # All numeric fields we want to aggregate
+    ALL_NUM_FIELDS = [
+        "tx_count", "gross_amount", "adjustments", "kushki_commission",
+        "iva_kushki_commission", "commission", "rolling_reserve",
+        "refund", "chargeback", "void", "manual_adj", "rr_released",
+        "net_deposit", "tonder_fee", "tonder_iva", "tonder_fee_iva",
+    ]
+
+    # Ensure all numeric fields exist with defaults
+    for col in ALL_NUM_FIELDS:
+        if col not in df.columns:
+            df[col] = 0
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+
+    # Daily summary with all fields.
+    agg_dict = {col: (col, "sum") for col in ALL_NUM_FIELDS if col in df.columns}
+    daily = df.groupby("date", as_index=False).agg(**agg_dict)
     daily_summary = daily.to_dict(orient="records")
 
     # Merchant detail — use separate merchant sheet if available.
     mdf = merchant_df_extra if merchant_df_extra is not None else (df if "merchant_name" in df.columns else None)
+    merchant_detail = []
+    merchant_daily_detail = []
+
     if mdf is not None and "merchant_name" in mdf.columns:
-        # Ensure numeric columns exist
-        for col in ["tx_count", "gross_amount", "commission", "rolling_reserve", "net_deposit"]:
+        mdf = mdf.copy()
+        for col in ALL_NUM_FIELDS:
             if col not in mdf.columns:
-                mdf[col] = 0
-            mdf[col] = pd.to_numeric(mdf[col], errors="coerce").fillna(0)
+                mdf[col] = 0.0
+            else:
+                mdf[col] = pd.to_numeric(mdf[col], errors="coerce").fillna(0)
         # Derive commission from components if needed
         if mdf["commission"].sum() == 0 and "kushki_commission" in mdf.columns:
-            kc = pd.to_numeric(mdf.get("kushki_commission", 0), errors="coerce").fillna(0)
-            iv = pd.to_numeric(mdf.get("iva_kushki_commission", 0), errors="coerce").fillna(0)
+            kc = pd.to_numeric(mdf.get("kushki_commission", pd.Series()), errors="coerce").fillna(0)
+            iv = pd.to_numeric(mdf.get("iva_kushki_commission", pd.Series()), errors="coerce").fillna(0)
             mdf["commission"] = kc + iv
-        merchant = (
-            mdf.groupby("merchant_name", as_index=False)
-            .agg(
-                tx_count=("tx_count", "sum"),
-                gross_amount=("gross_amount", "sum"),
-                commission=("commission", "sum"),
-                rolling_reserve=("rolling_reserve", "sum"),
-                net_deposit=("net_deposit", "sum"),
-            )
-        )
+
+        # Aggregated per merchant (pivot)
+        m_agg = {col: (col, "sum") for col in ALL_NUM_FIELDS if col in mdf.columns}
+        merchant = mdf.groupby("merchant_name", as_index=False).agg(**m_agg)
         merchant_detail = merchant.to_dict(orient="records")
-    else:
-        merchant_detail = []
+
+        # Raw per-merchant-per-day detail (the full 19-column view)
+        if "date" in mdf.columns:
+            mdf["date"] = mdf["date"].astype(str).str.strip()
+            detail_cols = ["date", "merchant_name"] + [c for c in ALL_NUM_FIELDS if c in mdf.columns]
+            merchant_daily_detail = mdf[detail_cols].to_dict(orient="records")
 
     total_net = float(daily["net_deposit"].sum())
     return {
         "daily_summary": daily_summary,
         "merchant_detail": merchant_detail,
+        "merchant_daily_detail": merchant_daily_detail,
         "total_net_deposit": round(total_net, 6),
         "row_count": len(df),
     }
