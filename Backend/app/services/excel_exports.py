@@ -700,36 +700,47 @@ def build_reconciliation_export(
     year = process.period_year
     bank = getattr(process, "bank_account", "Banregio") or "Banregio"
 
-    # ── Brand colors ──
-    DARK = "1C1917"        # stone-900 — primary dark
-    BRAND_BG = "292524"    # stone-800 — header bg
-    LIGHT_BG = "FAFAF9"    # stone-50 — subtle bg
+    # ── Palette: clean grey + blue ──
+    DARK = "1F2937"         # gray-800
+    MID = "374151"          # gray-700
+    BLUE = "2563EB"         # blue-600
+    BLUE_DARK = "1E40AF"    # blue-800
+    BLUE_LIGHT = "EFF6FF"   # blue-50
+    BLUE_MED = "DBEAFE"     # blue-100
     WHITE = "FFFFFF"
-    GREEN_BG = "ECFDF5"    # emerald-50
-    GREEN_TX = "065F46"    # emerald-800
-    RED_BG = "FEF2F2"      # red-50
-    RED_TX = "991B1B"       # red-800
-    AMBER_BG = "FFFBEB"
-    GRAY_BG = "F5F5F4"     # stone-100
-    BORDER_COLOR = "D6D3D1" # stone-300
+    GRAY_50 = "F9FAFB"
+    GRAY_100 = "F3F4F6"
+    GRAY_200 = "E5E7EB"
+    GRAY_300 = "D1D5DB"
+    GRAY_500 = "6B7280"
+    GRAY_900 = "111827"
+    RED_LIGHT = "FEF2F2"
+    RED_TX = "B91C1C"
+    GREEN_TX = "047857"
+    AMBER_TX = "92400E"
+    AMBER_LIGHT = "FFFBEB"
 
     # ── Reusable styles ──
-    title_font = Font(name="Arial", bold=True, size=14, color=DARK)
-    subtitle_font = Font(name="Arial", size=10, color="78716C")
-    header_font = Font(name="Arial", bold=True, size=10, color=WHITE)
-    header_fill = PatternFill("solid", fgColor=BRAND_BG)
+    title_font = Font(name="Calibri", bold=True, size=13, color=DARK)
+    subtitle_font = Font(name="Calibri", size=10, color=GRAY_500)
+    header_font = Font(name="Calibri", bold=True, size=9, color=GRAY_500)
+    header_fill = PatternFill("solid", fgColor=GRAY_50)
     header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
-    body_font = Font(name="Arial", size=10, color="44403C")
+    body_font = Font(name="Calibri", size=10, color=MID)
     money_fmt = '#,##0.00'
     pct_fmt = '0.00%'
-    green_fill = PatternFill("solid", fgColor=GREEN_BG)
-    red_fill = PatternFill("solid", fgColor=RED_BG)
-    amber_fill = PatternFill("solid", fgColor=AMBER_BG)
-    gray_fill = PatternFill("solid", fgColor=GRAY_BG)
-    light_fill = PatternFill("solid", fgColor=LIGHT_BG)
+    green_fill = PatternFill("solid", fgColor=WHITE)
+    red_fill = PatternFill("solid", fgColor=RED_LIGHT)
+    amber_fill = PatternFill("solid", fgColor=AMBER_LIGHT)
+    gray_fill = PatternFill("solid", fgColor=GRAY_100)
+    light_fill = PatternFill("solid", fgColor=GRAY_50)
+    white_fill = PatternFill("solid", fgColor=WHITE)
     from openpyxl.styles import Border, Side
     thin_border = Border(
-        bottom=Side(style="thin", color=BORDER_COLOR),
+        bottom=Side(style="thin", color=GRAY_200),
+    )
+    header_border = Border(
+        bottom=Side(style="medium", color=GRAY_300),
     )
 
     def _brand_header(ws, row_idx, start, end):
@@ -738,6 +749,7 @@ def build_reconciliation_export(
             cell.font = header_font
             cell.fill = header_fill
             cell.alignment = header_align
+            cell.border = header_border
 
     def _brand_title(ws, row_idx, text, merge_to=6):
         ws.merge_cells(start_row=row_idx, start_column=1, end_row=row_idx, end_column=merge_to)
@@ -752,6 +764,16 @@ def build_reconciliation_export(
         cell.value = text
         cell.font = subtitle_font
 
+    def _section_header(ws, row_idx, text, cols=5):
+        ws.merge_cells(start_row=row_idx, start_column=1, end_row=row_idx, end_column=cols)
+        cell = ws.cell(row=row_idx, column=1)
+        cell.value = text
+        cell.font = Font(name="Calibri", bold=True, size=10, color=BLUE_DARK)
+        cell.fill = PatternFill("solid", fgColor=BLUE_LIGHT)
+        cell.alignment = Alignment(vertical="center")
+        for col in range(2, cols + 1):
+            ws.cell(row=row_idx, column=col).fill = PatternFill("solid", fgColor=BLUE_LIGHT)
+
     cov = summary.get("coverage_pct", 0)
     classified = summary.get("classified", 0)
     total = summary.get("total_movements", 0)
@@ -760,7 +782,7 @@ def build_reconciliation_export(
     # ── Sheet 1: Reconciliación ───────────────────────────────────────
     ws = wb.active
     ws.title = "Reconciliación"
-    ws.sheet_properties.tabColor = BRAND_BG
+    ws.sheet_properties.tabColor = BLUE
 
     # Title block
     _brand_title(ws, 1, f"TrueBook — Reconciliación {bank}", 9)
@@ -771,22 +793,17 @@ def build_reconciliation_export(
     # KPI row
     kpi_row = 4
     kpi_data = [
-        ("Movimientos", total),
-        ("Reconciliados", classified),
-        ("Pendientes", unclassified),
-        ("Cobertura", f"{cov}%"),
+        ("Movimientos", total, DARK),
+        ("Reconciliados", classified, GREEN_TX),
+        ("Pendientes", unclassified, RED_TX if unclassified > 0 else GRAY_500),
+        ("Cobertura", f"{cov}%", BLUE),
     ]
-    for i, (label, val) in enumerate(kpi_data):
+    for i, (label, val, color) in enumerate(kpi_data):
         col = 1 + i * 2
-        ws.cell(row=kpi_row, column=col, value=label).font = Font(name="Arial", size=9, color="78716C")
+        ws.cell(row=kpi_row, column=col, value=label).font = Font(name="Calibri", size=9, color=GRAY_500)
         c = ws.cell(row=kpi_row + 1, column=col, value=val)
-        c.font = Font(name="Arial", bold=True, size=16, color=DARK)
-        if isinstance(val, int):
-            if label == "Reconciliados":
-                c.font = Font(name="Arial", bold=True, size=16, color=GREEN_TX)
-            elif label == "Pendientes" and val > 0:
-                c.font = Font(name="Arial", bold=True, size=16, color=RED_TX)
-    ws.row_dimensions[kpi_row + 1].height = 28
+        c.font = Font(name="Calibri", bold=True, size=14, color=color)
+    ws.row_dimensions[kpi_row + 1].height = 24
 
     # Headers
     h_row = 7
@@ -804,37 +821,40 @@ def build_reconciliation_export(
         cls_label = CLS_LABELS.get(m.get("classification", ""), m.get("classification", ""))
 
         ws.cell(row=r_idx, column=1, value="✓" if is_recon else "✗").font = Font(
-            name="Arial", bold=True, size=11, color=GREEN_TX if is_recon else RED_TX)
+            name="Calibri", bold=True, size=10, color=BLUE if is_recon else RED_TX)
         ws.cell(row=r_idx, column=2, value=m.get("date", "")).font = body_font
         ws.cell(row=r_idx, column=3, value=m.get("description", "")).font = body_font
         ws.cell(row=r_idx, column=4, value=m.get("debit") if m.get("debit", 0) > 0 else None)
         ws.cell(row=r_idx, column=5, value=m.get("credit") if m.get("credit", 0) > 0 else None)
-        ws.cell(row=r_idx, column=6, value=cls_label).font = Font(name="Arial", size=10, color=DARK)
-        ws.cell(row=r_idx, column=7, value=m.get("acquirer") or "—").font = body_font
-        ws.cell(row=r_idx, column=8, value=m.get("method") or "—").font = Font(name="Arial", size=9, color="A8A29E")
+        ws.cell(row=r_idx, column=6, value=cls_label).font = Font(name="Calibri", size=9, color=BLUE_DARK)
+        ws.cell(row=r_idx, column=7, value=m.get("acquirer") or "").font = Font(name="Calibri", size=9, color=GRAY_500)
+        ws.cell(row=r_idx, column=8, value=m.get("method") or "").font = Font(name="Calibri", size=9, color=GRAY_300)
         estado_cell = ws.cell(row=r_idx, column=9, value="Reconciliado" if is_recon else "PENDIENTE")
-        estado_cell.font = Font(name="Arial", bold=True, size=9,
-                                color=GREEN_TX if is_recon else RED_TX)
+        estado_cell.font = Font(name="Calibri", bold=True, size=9,
+                                color=BLUE if is_recon else RED_TX)
 
-        # Alternating row + status color
-        fill = green_fill if is_recon else red_fill
-        alt_fill = light_fill if r_idx % 2 == 0 and is_recon else fill
+        # Clean alternating rows — pending gets subtle red, reconciled alternates white/gray
+        row_fill = white_fill
+        if not is_recon:
+            row_fill = red_fill
+        elif r_idx % 2 == 0:
+            row_fill = light_fill
         for col in range(1, len(headers) + 1):
             cell = ws.cell(row=r_idx, column=col)
-            cell.fill = alt_fill if is_recon else red_fill
+            cell.fill = row_fill
             cell.border = thin_border
             if col in (4, 5):
                 cell.number_format = money_fmt
                 if col == 4 and cell.value:
-                    cell.font = Font(name="Arial", size=10, color="DC2626")
+                    cell.font = Font(name="Calibri", size=10, color=RED_TX)
                 elif col == 5 and cell.value:
-                    cell.font = Font(name="Arial", size=10, color=GREEN_TX)
+                    cell.font = Font(name="Calibri", size=10, color=MID)
 
     _autowidth(ws, max_width=50)
 
     # ── Sheet 2: Por Adquirente ───────────────────────────────────────
     ws2 = wb.create_sheet("Por Adquirente")
-    ws2.sheet_properties.tabColor = "1D4ED8"
+    ws2.sheet_properties.tabColor = BLUE_DARK
 
     _brand_title(ws2, 1, f"TrueBook — Desglose por Adquirente", 17)
     _brand_subtitle(ws2, 2, f"{month_name} {year}  |  {bank}  |  {process.name}", 17)
@@ -846,23 +866,16 @@ def build_reconciliation_export(
         deps = acq.get("deposits", [])
         total_amt = acq.get("total_amount", 0)
 
-        # Acquirer section header
-        ws2.merge_cells(start_row=row, start_column=1, end_row=row, end_column=5)
-        cell = ws2.cell(row=row, column=1, value=f"  {name}  —  {len(deps)} depósitos  —  ${total_amt:,.2f} MXN")
-        cell.font = Font(name="Arial", bold=True, size=11, color=WHITE)
-        cell.fill = PatternFill("solid", fgColor=BRAND_BG)
-        cell.alignment = Alignment(vertical="center")
-        for col in range(2, 6):
-            ws2.cell(row=row, column=col).fill = PatternFill("solid", fgColor=BRAND_BG)
+        # Acquirer section header — blue-light bar
+        _section_header(ws2, row, f"  {name}  —  {len(deps)} depósitos  —  ${total_amt:,.2f} MXN", 5)
         ws2.row_dimensions[row].height = 26
         row += 1
 
         # Deposit headers
         dep_headers = ["Fecha", "Descripción", "Monto"]
         for i, h in enumerate(dep_headers, 1):
-            c = ws2.cell(row=row, column=i, value=h)
-            c.font = Font(name="Arial", bold=True, size=9, color="78716C")
-            c.fill = PatternFill("solid", fgColor=GRAY_BG)
+            ws2.cell(row=row, column=i, value=h)
+        _brand_header(ws2, row, 1, len(dep_headers))
         row += 1
 
         for dep in deps:
@@ -870,7 +883,7 @@ def build_reconciliation_export(
             ws2.cell(row=row, column=2, value=dep.get("description", "")).font = body_font
             c = ws2.cell(row=row, column=3, value=dep.get("amount", 0))
             c.number_format = money_fmt
-            c.font = Font(name="Arial", size=10, color=GREEN_TX)
+            c.font = Font(name="Calibri", size=10, color=MID)
             for col in range(1, 4):
                 ws2.cell(row=row, column=col).border = thin_border
             row += 1
@@ -880,7 +893,7 @@ def build_reconciliation_export(
         if merchants:
             row += 1
             ws2.cell(row=row, column=1, value="Desglose por comercio").font = Font(
-                name="Arial", bold=True, size=9, color="78716C")
+                name="Calibri", bold=True, size=9, color=GRAY_500)
             row += 1
             merch_headers = [
                 "Comercio", "# Txns", "Monto Bruto", "Bruto Ajustes",
@@ -891,7 +904,7 @@ def build_reconciliation_export(
             ]
             for i, h in enumerate(merch_headers, 1):
                 ws2.cell(row=row, column=i, value=h)
-            _brand_header(ws, row, 1, len(merch_headers))
+            _brand_header(ws2, row, 1, len(merch_headers))
             ws2.row_dimensions[row].height = 22
             row += 1
             merch_fields = [
@@ -907,7 +920,7 @@ def build_reconciliation_export(
                     cell = ws2.cell(row=row, column=ci)
                     if field == "merchant_name":
                         cell.value = val or ""
-                        cell.font = Font(name="Arial", bold=True, size=10, color=DARK)
+                        cell.font = Font(name="Calibri", bold=True, size=10, color=DARK)
                     elif field == "tx_count":
                         cell.value = int(_num(val))
                         cell.number_format = '#,##0'
@@ -916,13 +929,12 @@ def build_reconciliation_export(
                         cell.value = _num(val)
                         cell.number_format = money_fmt
                         cell.font = body_font
-                        # Highlight key columns
                         if field == "net_deposit":
-                            cell.font = Font(name="Arial", bold=True, size=10, color=GREEN_TX)
+                            cell.font = Font(name="Calibri", bold=True, size=10, color=BLUE_DARK)
                         elif field == "chargeback" and _num(val) < 0:
-                            cell.font = Font(name="Arial", size=10, color=RED_TX)
+                            cell.font = Font(name="Calibri", size=10, color=RED_TX)
                         elif field == "commission":
-                            cell.font = Font(name="Arial", size=10, color="B45309")
+                            cell.font = Font(name="Calibri", size=10, color=GRAY_500)
                     cell.border = thin_border
                     if m_idx % 2 == 1:
                         cell.fill = light_fill
@@ -934,14 +946,14 @@ def build_reconciliation_export(
 
     # ── Sheet 3: Alertas ──────────────────────────────────────────────
     ws3 = wb.create_sheet("Alertas")
-    ws3.sheet_properties.tabColor = "DC2626"
+    ws3.sheet_properties.tabColor = GRAY_500
 
     _brand_title(ws3, 1, "TrueBook — Alertas de Reconciliación")
     _brand_subtitle(ws3, 2, f"{month_name} {year}  |  Cobertura: {cov}%  |  {unclassified} pendientes")
 
     # Pending movements
     ws3.cell(row=4, column=1, value="MOVIMIENTOS PENDIENTES DE RECONCILIAR")
-    ws3.cell(row=4, column=1).font = Font(name="Arial", bold=True, size=11, color=RED_TX)
+    ws3.cell(row=4, column=1).font = Font(name="Calibri", bold=True, size=11, color=DARK)
 
     pend_headers = ["#", "Fecha", "Descripción", "Cargo", "Abono", "Acción requerida"]
     for i, h in enumerate(pend_headers, 1):
@@ -969,7 +981,7 @@ def build_reconciliation_export(
     if alerts:
         pend_row += 2
         ws3.cell(row=pend_row, column=1, value="ALERTAS DEL SISTEMA")
-        ws3.cell(row=pend_row, column=1).font = Font(name="Arial", bold=True, size=11, color=DARK)
+        ws3.cell(row=pend_row, column=1).font = Font(name="Calibri", bold=True, size=11, color=DARK)
         pend_row += 1
         alert_headers = ["Nivel", "Tipo", "Título", "Mensaje"]
         for i, h in enumerate(alert_headers, 1):
@@ -978,10 +990,10 @@ def build_reconciliation_export(
         pend_row += 1
         for a in alerts:
             ws3.cell(row=pend_row, column=1, value=a.get("alert_level", "")).font = Font(
-                name="Arial", bold=True, size=10)
+                name="Calibri", bold=True, size=9, color=GRAY_500)
             ws3.cell(row=pend_row, column=2, value=a.get("alert_type", "")).font = body_font
             ws3.cell(row=pend_row, column=3, value=a.get("title", "")).font = Font(
-                name="Arial", bold=True, size=10, color=DARK)
+                name="Calibri", bold=True, size=10, color=DARK)
             ws3.cell(row=pend_row, column=4, value=a.get("message", "")).font = body_font
             level = a.get("alert_level", "")
             fill = red_fill if level == "CRITICAL" else amber_fill if level in ("WARNING", "UNCLASSIFIED") else gray_fill
