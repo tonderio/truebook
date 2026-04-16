@@ -135,6 +135,9 @@ def parse_banregio(content: bytes, filename: str) -> Dict[str, Any]:
         # Skip rows where "date" is clearly not a date (e.g., summary text)
         if len(date_val) > 20:
             continue
+        # Skip summary/total rows
+        if date_val.upper().startswith("TOTAL"):
+            continue
 
         # Clean description of "nan"
         if desc_val.lower() in ("nan", "none"):
