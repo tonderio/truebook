@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, JSON
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, JSON, Numeric
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -13,13 +13,18 @@ class AccountingProcess(Base):
     period_month = Column(Integer, nullable=False)
     acquirers = Column(JSON, default=["OXXOPay", "Bitso", "Kushki", "STP"])
     status = Column(String, default="pending")
-    # pending | running | completed | failed
+    # pending | running | completed | reconciled | failed
     current_stage = Column(String, nullable=True)
     progress = Column(Integer, default=0)
     created_by = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     error_message = Column(Text, nullable=True)
+
+    # Reconciliation tracking (TrueBook v2)
+    reconciled_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    reconciled_at = Column(DateTime(timezone=True), nullable=True)
+    coverage_pct = Column(Numeric(5, 2), nullable=True)
 
     logs = relationship("ProcessLog", back_populates="process", cascade="all, delete-orphan")
     files = relationship("UploadedFile", back_populates="process", cascade="all, delete-orphan")

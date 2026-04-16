@@ -1,5 +1,6 @@
 import logging
 import os
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import List
@@ -10,8 +11,12 @@ from app.models.user import User
 from app.models.process import AccountingProcess, ProcessLog
 from app.models.result import FeesResult, KushkiResult, BanregioResult, ConciliationResult
 from app.models.file import UploadedFile
+from app.models.adjustment import RunAdjustment
+from app.models.classification import BanregioMovementClassification
 from app.schemas.process import ProcessCreate, ProcessOut, ProcessProgress, ProcessLogOut
 from app.services import mongo_extractor, fees_processor, conciliation_engine, kushki_sftp
+from app.services.auto_classifier import auto_classify_all, compute_coverage
+from app.services import alert_engine
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/processes", tags=["processes"])
@@ -82,6 +87,24 @@ def delete_process(process_id: int, db: Session = Depends(get_db), current_user:
             pass
     db.query(UploadedFile).filter(UploadedFile.process_id == process_id).delete()
     db.query(ProcessLog).filter(ProcessLog.process_id == process_id).delete()
+    # Clean up TrueBook v2 tables (explicit delete for safety, not relying on CASCADE)
+    from app.models.alert import RunAlert
+    from app.models.bitso import BitsoBanregioMatch, BitsoReportLine, BitsoReport
+    db.query(RunAdjustment).filter(RunAdjustment.process_id == process_id).delete()
+    db.query(BanregioMovementClassification).filter(
+        BanregioMovementClassification.process_id == process_id
+    ).delete()
+    db.query(RunAlert).filter(RunAlert.process_id == process_id).delete()
+    # Bitso chain: matches → lines → reports (delete in dependency order)
+    db.query(BitsoBanregioMatch).filter(
+        BitsoBanregioMatch.process_id == process_id
+    ).delete()
+    bitso_reports = db.query(BitsoReport).filter(
+        BitsoReport.process_id == process_id
+    ).all()
+    for br in bitso_reports:
+        db.query(BitsoReportLine).filter(BitsoReportLine.report_id == br.id).delete()
+    db.query(BitsoReport).filter(BitsoReport.process_id == process_id).delete()
     db.delete(proc)
     db.commit()
     return {"message": "Proceso eliminado"}
@@ -126,6 +149,125 @@ def run_process(
 
     background_tasks.add_task(_run_full_process, process_id)
     return {"message": "Process started", "process_id": process_id}
+
+
+@router.post("/{process_id}/reconcile")
+def reconcile_process(
+    process_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Transition a process from COMPLETED to RECONCILED.
+
+    Requirements:
+    - Process status must be 'completed'
+    - Banregio coverage must be 100%
+    - No pending adjustments
+    - All deltas must be $0 or covered by approved adjustments
+    """
+    proc = db.query(AccountingProcess).filter(
+        AccountingProcess.id == process_id
+    ).first()
+    if not proc:
+        raise HTTPException(status_code=404, detail="Process not found")
+    if proc.status != "completed":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Process must be in 'completed' status to reconcile (current: {proc.status})",
+        )
+
+    blockers = []
+
+    # Check coverage
+    coverage = proc.coverage_pct
+    if coverage is None or float(coverage) < 100.0:
+        blockers.append(
+            f"Banregio coverage is {coverage or 0}% (must be 100%)"
+        )
+
+    # Check pending adjustments
+    pending = (
+        db.query(RunAdjustment)
+        .filter(
+            RunAdjustment.process_id == process_id,
+            RunAdjustment.status == "pending",
+        )
+        .count()
+    )
+    if pending > 0:
+        blockers.append(f"{pending} pending adjustment(s) must be approved or rejected")
+
+    # Check that all conciliation deltas are zero or covered by approved adjustments
+    conciliation_rows = (
+        db.query(ConciliationResult)
+        .filter(ConciliationResult.process_id == process_id)
+        .all()
+    )
+    for cr in conciliation_rows:
+        delta = float(cr.total_difference) if cr.total_difference else 0
+        if abs(delta) > 0.01:  # tolerance of 1 centavo
+            # Check if approved adjustments cover this delta
+            approved_adj = (
+                db.query(RunAdjustment)
+                .filter(
+                    RunAdjustment.process_id == process_id,
+                    RunAdjustment.status == "approved",
+                    RunAdjustment.conciliation_type == cr.conciliation_type,
+                )
+                .all()
+            )
+            adj_total = sum(
+                float(a.amount) * (1 if a.direction == "ADD" else -1)
+                for a in approved_adj
+            )
+            remaining = abs(delta) - abs(adj_total)
+            if remaining > 0.01:
+                blockers.append(
+                    f"Conciliation '{cr.conciliation_type}' has unexplained delta "
+                    f"of ${abs(delta):,.2f} MXN (adjustments cover ${abs(adj_total):,.2f})"
+                )
+
+    if blockers:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "Cannot reconcile — blockers exist",
+                "blockers": blockers,
+            },
+        )
+
+    proc.status = "reconciled"
+    proc.reconciled_by = current_user.id
+    proc.reconciled_at = datetime.now(timezone.utc)
+    db.commit()
+
+    _log(db, process_id, "system", f"Proceso marcado como RECONCILED por {current_user.email}")
+    return {"message": "Process reconciled", "status": "reconciled"}
+
+
+@router.post("/{process_id}/unreconcile")
+def unreconcile_process(
+    process_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Revert a RECONCILED process back to COMPLETED for corrections."""
+    proc = db.query(AccountingProcess).filter(
+        AccountingProcess.id == process_id
+    ).first()
+    if not proc:
+        raise HTTPException(status_code=404, detail="Process not found")
+    if proc.status != "reconciled":
+        raise HTTPException(status_code=400, detail="Process is not reconciled")
+
+    proc.status = "completed"
+    proc.reconciled_by = None
+    proc.reconciled_at = None
+    db.commit()
+
+    _log(db, process_id, "system", f"Proceso reabierto a COMPLETED por {current_user.email}")
+    return {"message": "Process reverted to completed", "status": "completed"}
 
 
 def _run_full_process(process_id: int):
@@ -350,6 +492,10 @@ def _run_full_process(process_id: int):
         db.query(ConciliationResult).filter(ConciliationResult.process_id == process_id).delete()
         db.commit()
 
+        # Read configurable tolerance from DB
+        tolerance = conciliation_engine.get_tolerance(db)
+        _log(db, process_id, "conciliation", f"Tolerancia configurada: {tolerance}")
+
         # FEES conciliation
         fees_concil = conciliation_engine.conciliate_fees(fees_data)
         db.add(ConciliationResult(
@@ -363,7 +509,7 @@ def _run_full_process(process_id: int):
 
         if kushki_data:
             # Kushki daily
-            kd_concil = conciliation_engine.conciliate_kushki_daily(kushki_data)
+            kd_concil = conciliation_engine.conciliate_kushki_daily(kushki_data, tolerance=tolerance)
             db.add(ConciliationResult(
                 process_id=process_id,
                 conciliation_type="kushki_daily",
@@ -375,7 +521,9 @@ def _run_full_process(process_id: int):
 
             if banregio_data:
                 # Kushki vs Banregio
-                kvb_concil = conciliation_engine.conciliate_kushki_vs_banregio(kushki_data, banregio_data)
+                kvb_concil = conciliation_engine.conciliate_kushki_vs_banregio(
+                    kushki_data, banregio_data, tolerance=tolerance,
+                )
                 db.add(ConciliationResult(
                     process_id=process_id,
                     conciliation_type="kushki_vs_banregio",
@@ -387,6 +535,70 @@ def _run_full_process(process_id: int):
                     total_difference=kvb_concil["total_difference"],
                 ))
         db.commit()
+
+        # ── Stage 8: Auto-classify Banregio movements ──────────────────────
+        _set_stage(db, proc, "classifying", 92)
+        coverage_stats = None
+        if banregio_data and banregio_data.get("movements"):
+            _log(db, process_id, "classification", "Auto-clasificando movimientos Banregio...")
+            try:
+                classifications = auto_classify_all(banregio_data["movements"])
+
+                # Clear previous classifications for idempotent re-runs
+                db.query(BanregioMovementClassification).filter(
+                    BanregioMovementClassification.process_id == process_id
+                ).delete()
+                db.commit()
+
+                for cls_data in classifications:
+                    db.add(BanregioMovementClassification(
+                        process_id=process_id,
+                        **cls_data,
+                    ))
+                db.commit()
+
+                coverage_stats = compute_coverage(classifications)
+                proc.coverage_pct = coverage_stats["coverage_pct"]
+                db.commit()
+                _log(
+                    db, process_id, "classification",
+                    f"Clasificación completada: {coverage_stats['classified']}/{coverage_stats['total_movements']} "
+                    f"({coverage_stats['coverage_pct']}% cobertura). "
+                    f"{coverage_stats['unclassified']} sin clasificar.",
+                )
+            except Exception as e:
+                _log(db, process_id, "classification", f"Error en auto-clasificación: {e}", "warning")
+
+        # ── Stage 9: Generate alerts ───────────────────────────────────────
+        _set_stage(db, proc, "alerting", 96)
+        try:
+            concil_data = []
+            conciliation_rows = db.query(ConciliationResult).filter(
+                ConciliationResult.process_id == process_id
+            ).all()
+            for cr in conciliation_rows:
+                concil_data.append({
+                    "conciliation_type": cr.conciliation_type,
+                    "total_difference": float(cr.total_difference) if cr.total_difference else 0,
+                })
+
+            pending_adj = db.query(RunAdjustment).filter(
+                RunAdjustment.process_id == process_id,
+                RunAdjustment.status == "pending",
+            ).count()
+
+            alerts = alert_engine.evaluate_alerts(
+                db=db,
+                process_id=process_id,
+                coverage_stats=coverage_stats,
+                conciliation_results=concil_data,
+                pending_adjustments=pending_adj,
+                has_kushki_data=kushki_data is not None,
+                has_banregio_data=banregio_data is not None,
+            )
+            _log(db, process_id, "alerts", f"{len(alerts)} alerta(s) generada(s)")
+        except Exception as e:
+            _log(db, process_id, "alerts", f"Error generando alertas: {e}", "warning")
 
         # ── Done ────────────────────────────────────────────────────────────
         proc.status = "completed"

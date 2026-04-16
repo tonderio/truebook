@@ -7,8 +7,10 @@ from app.core.deps import get_current_user
 from app.models.user import User
 from app.models.process import AccountingProcess
 from app.models.result import FeesResult, KushkiResult, BanregioResult, ConciliationResult
+from app.models.adjustment import RunAdjustment
 from app.services.aws_settlements import get_status as aws_status
 from app.services.excel_exports import build_fees_export, build_kushki_export, build_banregio_export
+from app.services.conciliation_engine import compute_adjusted_delta
 from typing import List
 
 router = APIRouter(prefix="/api/results", tags=["results"])
@@ -55,6 +57,87 @@ def get_banregio_result(process_id: int, db: Session = Depends(get_db), current_
         "movements": result.movements,
         "summary": result.summary,
         "created_at": result.created_at,
+    }
+
+
+@router.get("/{process_id}/conciliation/summary")
+def get_conciliation_summary(
+    process_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Enriched conciliation summary with delta bruto and delta ajustado.
+
+    For each conciliation type, layers approved adjustments on top of the raw
+    delta to compute the adjusted delta. Both values are always returned so
+    the frontend can show them side-by-side.
+    """
+    results = (
+        db.query(ConciliationResult)
+        .filter(ConciliationResult.process_id == process_id)
+        .all()
+    )
+    if not results:
+        raise HTTPException(status_code=404, detail="No conciliation results found")
+
+    # Fetch all approved adjustments for this process
+    approved = (
+        db.query(RunAdjustment)
+        .filter(
+            RunAdjustment.process_id == process_id,
+            RunAdjustment.status == "approved",
+        )
+        .all()
+    )
+    adj_dicts = [
+        {
+            "id": a.id,
+            "adjustment_type": a.adjustment_type,
+            "direction": a.direction,
+            "amount": float(a.amount),
+            "affects": a.affects,
+            "conciliation_type": a.conciliation_type,
+            "description": a.description,
+        }
+        for a in approved
+    ]
+
+    summary = []
+    total_delta_bruto = 0.0
+    total_delta_ajustado = 0.0
+
+    for r in results:
+        delta_bruto = float(r.total_difference) if r.total_difference else 0
+        adjusted = compute_adjusted_delta(
+            delta_bruto=delta_bruto,
+            adjustments=adj_dicts,
+            conciliation_type=r.conciliation_type,
+        )
+
+        total_delta_bruto += delta_bruto
+        total_delta_ajustado += adjusted["delta_ajustado"]
+
+        summary.append({
+            "conciliation_type": r.conciliation_type,
+            "total_conciliated": float(r.total_conciliated) if r.total_conciliated else 0,
+            "matched_count": len(r.matched) if r.matched else 0,
+            "differences_count": len(r.differences) if r.differences else 0,
+            "unmatched_kushki_count": len(r.unmatched_kushki) if r.unmatched_kushki else 0,
+            "unmatched_banregio_count": len(r.unmatched_banregio) if r.unmatched_banregio else 0,
+            **adjusted,
+        })
+
+    return {
+        "process_id": process_id,
+        "conciliations": summary,
+        "totals": {
+            "delta_bruto": round(total_delta_bruto, 2),
+            "delta_ajustado": round(total_delta_ajustado, 2),
+            "total_adjustments_applied": sum(
+                s["adjustments_count"] for s in summary
+            ),
+        },
     }
 
 

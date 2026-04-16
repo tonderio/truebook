@@ -3,13 +3,33 @@ Conciliation engine.
 1. FEES conciliation — consolidate by merchant
 2. Kushki daily conciliation
 3. Kushki vs Banregio — Column I (Kushki net_deposit) vs Column H (Banregio deposit_ref)
+
+Tolerance is configurable via the reconciliation_config table.
+When called from the pipeline, the caller reads the config and passes it in.
+The default (0.01) is used as a fallback.
 """
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 logger = logging.getLogger(__name__)
 
-TOLERANCE = 0.01  # centavo tolerance for matching
+DEFAULT_TOLERANCE = 0.01
+
+
+def get_tolerance(db=None, config_key: str = "conciliation_tolerance") -> float:
+    """Read tolerance from reconciliation_config table, or return default."""
+    if db is None:
+        return DEFAULT_TOLERANCE
+    try:
+        from app.models.alert import ReconciliationConfig
+        config = db.query(ReconciliationConfig).filter(
+            ReconciliationConfig.config_key == config_key
+        ).first()
+        if config:
+            return float(config.config_value)
+    except Exception:
+        pass
+    return DEFAULT_TOLERANCE
 
 
 def conciliate_fees(fees_result: Dict[str, Any]) -> Dict[str, Any]:
@@ -52,7 +72,10 @@ def conciliate_fees(fees_result: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def conciliate_kushki_daily(kushki_result: Dict[str, Any]) -> Dict[str, Any]:
+def conciliate_kushki_daily(
+    kushki_result: Dict[str, Any],
+    tolerance: float = DEFAULT_TOLERANCE,
+) -> Dict[str, Any]:
     """
     Validate Kushki daily summary:
     gross - commission - rolling_reserve = net_deposit per day.
@@ -79,7 +102,7 @@ def conciliate_kushki_daily(kushki_result: Dict[str, Any]) -> Dict[str, Any]:
             "computed_net": computed_net,
             "difference": diff,
         }
-        if diff <= TOLERANCE:
+        if diff <= tolerance:
             matched.append(entry)
         else:
             differences.append(entry)
@@ -100,6 +123,7 @@ def conciliate_kushki_daily(kushki_result: Dict[str, Any]) -> Dict[str, Any]:
 def conciliate_kushki_vs_banregio(
     kushki_result: Dict[str, Any],
     banregio_result: Dict[str, Any],
+    tolerance: float = DEFAULT_TOLERANCE,
 ) -> Dict[str, Any]:
     """
     Cross Kushki Column I (net_deposit per day) vs Banregio Column H (deposit_ref).
@@ -125,7 +149,7 @@ def conciliate_kushki_vs_banregio(
     for k in kushki_deposits:
         found = False
         for b in banregio_deposits:
-            if not b["matched"] and abs(b["amount"] - k["amount"]) <= TOLERANCE:
+            if not b["matched"] and abs(b["amount"] - k["amount"]) <= tolerance:
                 matched.append({
                     "date": k["date"],
                     "kushki_amount": k["amount"],
@@ -155,4 +179,56 @@ def conciliate_kushki_vs_banregio(
             "total_unmatched_kushki": len(unmatched_kushki),
             "total_unmatched_banregio": len(unmatched_banregio),
         },
+    }
+
+
+def compute_adjusted_delta(
+    delta_bruto: float,
+    adjustments: List[Dict],
+    conciliation_type: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Layer approved adjustments on top of a raw delta to compute adjusted delta.
+
+    Args:
+        delta_bruto: The raw conciliation difference
+        adjustments: List of approved RunAdjustment dicts with keys:
+            direction (ADD/SUBTRACT), amount, affects (expected/received/delta)
+        conciliation_type: Filter adjustments to this conciliation type (optional)
+
+    Returns:
+        {delta_bruto, delta_ajustado, adjustments_applied, net_adjustment}
+    """
+    applied = []
+    net_adjustment = 0.0
+
+    for adj in adjustments:
+        # Filter by conciliation type if specified
+        if conciliation_type and adj.get("conciliation_type") != conciliation_type:
+            continue
+
+        amount = float(adj.get("amount", 0))
+        direction = adj.get("direction", "")
+
+        if direction == "ADD":
+            net_adjustment += amount
+        elif direction == "SUBTRACT":
+            net_adjustment -= amount
+
+        applied.append({
+            "id": adj.get("id"),
+            "type": adj.get("adjustment_type"),
+            "direction": direction,
+            "amount": amount,
+            "description": adj.get("description", ""),
+        })
+
+    delta_ajustado = delta_bruto + net_adjustment
+
+    return {
+        "delta_bruto": round(delta_bruto, 2),
+        "delta_ajustado": round(delta_ajustado, 2),
+        "net_adjustment": round(net_adjustment, 2),
+        "adjustments_applied": applied,
+        "adjustments_count": len(applied),
     }

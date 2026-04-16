@@ -25,8 +25,8 @@ async def upload_file(
     if not proc:
         raise HTTPException(status_code=404, detail="Process not found")
 
-    if file_type not in ("kushki", "banregio"):
-        raise HTTPException(status_code=400, detail="file_type must be 'kushki' or 'banregio'")
+    if file_type not in ("kushki", "banregio", "bitso"):
+        raise HTTPException(status_code=400, detail="file_type must be 'kushki', 'banregio', or 'bitso'")
 
     base_dir = os.path.abspath(settings.UPLOAD_DIR)
     upload_dir = os.path.join(base_dir, str(process_id))

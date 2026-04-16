@@ -23,6 +23,9 @@ class ProcessOut(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime]
     error_message: Optional[str]
+    reconciled_by: Optional[int] = None
+    reconciled_at: Optional[datetime] = None
+    coverage_pct: Optional[float] = None
 
     class Config:
         from_attributes = True

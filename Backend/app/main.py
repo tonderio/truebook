@@ -1,12 +1,12 @@
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import auth, processes, files, results
+from app.routers import auth, processes, files, results, classifications, adjustments, alerts, bitso, warren
 
 app = FastAPI(
-    title="AFinOps Tonder — Contabilidad API",
-    version="1.0.0",
-    description="Backend del sistema de cierre contable mensual de Tonder",
+    title="TrueBook — FinOps Reconciliation API",
+    version="2.0.0",
+    description="Plataforma de conciliación financiera de Tonder — TrueBook v2",
 )
 
 app.add_middleware(
@@ -21,8 +21,13 @@ app.include_router(auth.router)
 app.include_router(processes.router)
 app.include_router(files.router)
 app.include_router(results.router)
+app.include_router(classifications.router)
+app.include_router(adjustments.router)
+app.include_router(alerts.router)
+app.include_router(bitso.router)
+app.include_router(warren.router)
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "AFinOps Tonder API"}
+    return {"status": "ok", "service": "TrueBook API v2"}

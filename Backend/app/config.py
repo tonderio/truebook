@@ -24,6 +24,9 @@ class Settings(BaseSettings):
 
     UPLOAD_DIR: str = "uploads"
 
+    # Internal API key for BFF proxy (TrueBook v2)
+    INTERNAL_API_KEY: Optional[str] = None
+
     # Kushki SFTP ingestion
     KUSHKI_SFTP_ENABLED: bool = False
     KUSHKI_SFTP_HOST: Optional[str] = None
@@ -35,6 +38,35 @@ class Settings(BaseSettings):
     KUSHKI_SFTP_REMOTE_DIR: str = "/Mensual"
     KUSHKI_SFTP_TIMEOUT_SECONDS: int = 30
     KUSHKI_SFTP_STRICT_HOST_KEY: bool = False
+
+    # STP SFTP (withdrawals — pending credentials)
+    STP_SFTP_ENABLED: bool = False
+    STP_SFTP_HOST: Optional[str] = None
+    STP_SFTP_PORT: int = 22
+    STP_SFTP_USERNAME: Optional[str] = None
+    STP_SFTP_PRIVATE_KEY: Optional[str] = None
+    STP_SFTP_REMOTE_DIR: str = "/"
+    STP_SFTP_TIMEOUT_SECONDS: int = 30
+
+    # Pagsmile / OXXO Pay SFTP (pending credentials)
+    PAGSMILE_SFTP_ENABLED: bool = False
+    PAGSMILE_SFTP_HOST: Optional[str] = None
+    PAGSMILE_SFTP_PORT: int = 22
+    PAGSMILE_SFTP_USERNAME: Optional[str] = None
+    PAGSMILE_SFTP_PRIVATE_KEY: Optional[str] = None
+    PAGSMILE_SFTP_REMOTE_DIR: str = "/"
+    PAGSMILE_SFTP_TIMEOUT_SECONDS: int = 30
+
+    # Paysafe SFTP (no transactions expected)
+    PAYSAFE_SFTP_ENABLED: bool = False
+    PAYSAFE_SFTP_HOST: Optional[str] = None
+    PAYSAFE_SFTP_PORT: int = 22
+    PAYSAFE_SFTP_USERNAME: Optional[str] = None
+    PAYSAFE_SFTP_PRIVATE_KEY: Optional[str] = None
+    PAYSAFE_SFTP_REMOTE_DIR: str = "/"
+
+    # Warren AI Agent (Anthropic Claude)
+    ANTHROPIC_API_KEY: Optional[str] = None
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 
