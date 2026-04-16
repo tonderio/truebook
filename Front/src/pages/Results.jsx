@@ -157,7 +157,7 @@ function KushkiTab({ processId }) {
               <Tooltip contentStyle={{ background: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 8 }} />
               <Legend />
               <Line type="monotone" dataKey="gross" stroke="#6366f1" dot={false} name="Bruto" />
-              <Line type="monotone" dataKey="net" stroke="#10b981" dot={false} name="Neto" />
+              <Line type="monotone" dataKey="net" stroke="#047857" dot={false} name="Neto" />
               <Line type="monotone" dataKey="commission" stroke="#f59e0b" dot={false} name="Comisión" />
             </LineChart>
           </ResponsiveContainer>
@@ -184,7 +184,7 @@ function KushkiTab({ processId }) {
                 <td className="px-4 py-2.5 text-gray-700"><FmtMoney value={d.gross_amount} /></td>
                 <td className="px-4 py-2.5 text-amber-600"><FmtMoney value={d.commission} /></td>
                 <td className="px-4 py-2.5 text-gray-500"><FmtMoney value={d.rolling_reserve} /></td>
-                <td className="px-4 py-2.5 text-emerald-600 font-medium"><FmtMoney value={d.net_deposit} /></td>
+                <td className="px-4 py-2.5 text-emerald-800 font-medium"><FmtMoney value={d.net_deposit} /></td>
               </tr>
             ))}
           </tbody>
@@ -239,7 +239,7 @@ function BanregioTab({ processId }) {
                   <td className="px-4 py-2.5 text-gray-500 text-xs">{m.date}</td>
                   <td className="px-4 py-2.5 text-gray-700 max-w-xs truncate">{m.description}</td>
                   <td className="px-4 py-2.5 text-red-600"><FmtMoney value={m.debit} /></td>
-                  <td className="px-4 py-2.5 text-emerald-600"><FmtMoney value={m.credit} /></td>
+                  <td className="px-4 py-2.5 text-emerald-800"><FmtMoney value={m.credit} /></td>
                   <td className="px-4 py-2.5 text-gray-500"><FmtMoney value={m.deposit_ref} /></td>
                 </tr>
               ))}
@@ -273,7 +273,7 @@ function ConciliationTab({ processId }) {
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-base font-semibold text-gray-900">{TYPE_LABEL[c.conciliation_type] || c.conciliation_type}</h3>
             <div className="flex items-center gap-3 text-sm">
-              <span className="flex items-center gap-1 text-emerald-600">
+              <span className="flex items-center gap-1 text-emerald-800">
                 <CheckCircle2 size={14} />
                 Conciliado: <FmtMoney value={c.total_conciliated} />
               </span>
@@ -289,7 +289,7 @@ function ConciliationTab({ processId }) {
           {/* Stats */}
           <div className="grid grid-cols-4 gap-3 mb-4">
             {[
-              { label: 'Conciliados', value: c.matched?.length || 0, color: 'text-emerald-600' },
+              { label: 'Conciliados', value: c.matched?.length || 0, color: 'text-emerald-800' },
               { label: 'Diferencias', value: c.differences?.length || 0, color: 'text-amber-600' },
               { label: 'Sin match Kushki', value: c.unmatched_kushki?.length || 0, color: 'text-red-600' },
               { label: 'Sin match Banregio', value: c.unmatched_banregio?.length || 0, color: 'text-red-600' },
@@ -318,7 +318,7 @@ function ConciliationTab({ processId }) {
                       <td className="px-3 py-2 text-gray-500">{m.date}</td>
                       <td className="px-3 py-2 text-gray-700"><FmtMoney value={m.kushki_amount} /></td>
                       <td className="px-3 py-2 text-gray-700"><FmtMoney value={m.banregio_amount} /></td>
-                      <td className={`px-3 py-2 ${m.difference > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                      <td className={`px-3 py-2 ${m.difference > 0 ? 'text-amber-600' : 'text-emerald-800'}`}>
                         <FmtMoney value={m.difference} />
                       </td>
                     </tr>

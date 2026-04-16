@@ -36,7 +36,7 @@ function StageTimeline({ currentStage, progress, status }) {
           <div key={stage.key} className="flex items-center gap-3">
             <div className={clsx(
               'w-6 h-6 rounded-full flex items-center justify-center text-xs shrink-0',
-              done   ? 'bg-emerald-500 text-white' :
+              done   ? 'bg-emerald-700 text-white' :
               active ? 'bg-blue-500 text-white' :
                        'bg-gray-100 text-gray-400'
             )}>
@@ -44,7 +44,7 @@ function StageTimeline({ currentStage, progress, status }) {
             </div>
             <span className={clsx(
               'text-sm',
-              done   ? 'text-emerald-600' :
+              done   ? 'text-emerald-800' :
               active ? 'text-blue-600 font-medium' :
                        'text-gray-400'
             )}>
@@ -202,7 +202,7 @@ export default function ProcessDetail() {
               <FileUpload processId={id} fileType="banregio" label="Archivos Banregio" />
             </div>
             {kushkiSftpEnabled && (
-              <p className="text-xs text-emerald-600 flex items-center gap-1">
+              <p className="text-xs text-emerald-800 flex items-center gap-1">
                 <CheckCircle2 size={12} /> Kushki se descargará automáticamente vía SFTP al ejecutar
               </p>
             )}

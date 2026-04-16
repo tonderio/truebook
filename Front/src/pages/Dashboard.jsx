@@ -16,7 +16,7 @@ import {
 } from 'recharts'
 
 const MONTH_NAMES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
-const PIE_COLORS = ['#10b981', '#1c1917', '#f59e0b', '#ef4444', '#d1d5db']
+const PIE_COLORS = ['#047857', '#1c1917', '#f59e0b', '#ef4444', '#d1d5db']
 
 function KpiCard({ label, value, icon: Icon, color, sub, delay = '' }) {
   return (
@@ -115,7 +115,7 @@ export default function Dashboard() {
           sub={stats.total > 0 ? 'Periodo activo' : 'Sin corridas aun'} delay="d1" />
         <KpiCard label="Completadas" value={stats.completed} icon={CheckCircle2} color="#2563eb"
           sub={stats.total > 0 ? `${Math.round(stats.completed / stats.total * 100)}% del total` : ''} delay="d2" />
-        <KpiCard label="Reconciliadas" value={stats.reconciled} icon={TrendingUp} color="#10b981"
+        <KpiCard label="Reconciliadas" value={stats.reconciled} icon={TrendingUp} color="#047857"
           sub={stats.total > 0 ? `${Math.round(stats.reconciled / stats.total * 100)}% del total` : ''} delay="d3" />
         <KpiCard label="Con Alertas" value={stats.failed} icon={AlertTriangle} color="#ef4444"
           sub={stats.failed > 0 ? 'Requieren revision' : 'Sin errores'} delay="d4" />
@@ -242,7 +242,7 @@ export default function Dashboard() {
                             className="progress-fill"
                             style={{
                               width: `${p.coverage_pct}%`,
-                              background: p.coverage_pct >= 100 ? '#10b981'
+                              background: p.coverage_pct >= 100 ? '#047857'
                                 : p.coverage_pct >= 50 ? '#1c1917' : '#ef4444',
                             }}
                           />
