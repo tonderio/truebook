@@ -85,27 +85,31 @@ KEYWORD_RULES: List[Tuple[str, Optional[str], List[str]]] = [
     ]),
 
     # ── Settlements to merchants (OUT) ─────────────────────────────────
-    # These are SPEI transfers to merchants — identified by merchant name
-    # patterns + "OUT" or "SETTLEMENTS" in the description, or the dated
-    # reference pattern 058-DD/MM/YYYY
+    # Rule: any SPEI Cargo (debit) with a known merchant name = settlement.
+    # Settlements are money OUT — not reconciled against acquirers directly.
+    # What matters for accountants: fees, tax, rolling reserve per merchant.
     ("settlement_to_merchant", None, [
         # Generic patterns
         "STP OUT", "OUT NUEVA", "SETTLEMENTS",
-        # Known merchant names from March 2026 data
-        "BCGAME OUT", "STRENDUS", "BETCRIS",
-        "STADIOBET", "MOLINO VIEJO", "TAJMAHAL",
-        "GOLDEN ISLAND", "VITAU", "VIVENTO",
-        "ARTILU", "BIG BOLA", "HARD ROCK",
-        "IDEM CLUB", "PESIX", "BRANZINO",
-        "OBSIDIANA", "COQUETEOS",
-        "AFUN BANKAOL", "ALAMO VALOR", "CAMPOBET OUT",
-        "CAMPOBET STP", "ESTADIO GANA", "GANGABET STP",
-        "ONIX VALOR", "PUERTO AVENTURAS", "RSN ELEVO",
+        # Known merchant names — these appear in "SPEI {MERCHANT} W{CODE}" format
+        "SPEI BCGAME", "SPEI AFUN", "SPEI CAMPOBET", "SPEI GANGABET",
+        "SPEI STRENDUS", "SPEI BETCRIS", "SPEI STADIOBET",
+        "SPEI MOLINO", "SPEI TAJMAHAL", "SPEI GOLDEN",
+        "SPEI VITAU", "SPEI VIVENTO", "SPEI ARTILU",
+        "SPEI BIG BOLA", "SPEI HARD ROCK", "SPEI IDEM",
+        "SPEI PESIX", "SPEI BRANZINO", "SPEI OBSIDIANA",
+        "SPEI COQUETEOS", "SPEI ALAMO", "SPEI ESTADIO",
+        "SPEI ONIX", "SPEI PUERTO", "SPEI RSN",
+        # Legacy patterns
+        "BCGAME OUT", "CAMPOBET OUT", "CAMPOBET STP", "GANGABET STP",
+        "AFUN BANKAOL",
     ]),
 
-    # ── Revenue (OUT) ──────────────────────────────────────────────────
-    ("revenue", None, [
-        "TONDER BBVA", "TONDER BBV",
+    # ── Revenue / Transfer between accounts ──────────────────────────
+    # "SPEI Revenue" is actually a transfer between Tonder's own accounts
+    ("transfer_between_accounts", None, [
+        "SPEI REVENUE", "REVENUE W", "TONDER BBVA", "TONDER BBV",
+        "REEMBOLSO CAMBIO",
     ]),
 
     # ── Banking operations ─────────────────────────────────────────────
@@ -115,6 +119,7 @@ KEYWORD_RULES: List[Tuple[str, Optional[str], List[str]]] = [
     ("bank_expense", None, [
         "COMISION TRANSFERENCIA", "IVA DE COMISION TRANSFERENCIA",
         "COMISION BANCARIA", "COMISION BANREGIO",
+        "COM. SPEI", "COM SPEI", "IVA SPEI", "IVA DE COM",
     ]),
 
     # Tax (before Investments — "ISR de Inversion" / "ISR Mesa Dinero" must match Tax)
@@ -183,11 +188,13 @@ def classify_movement(
     for classification, acquirer, tokens in KEYWORD_RULES:
         for token in tokens:
             if _normalize(token) in desc_norm:
-                # Special guard: "STP" appears in both acquirer deposits and
-                # settlement outbound. Only classify as STP acquirer if it's
-                # an inbound (abono) movement with "LIQUIDACION"
+                # Special guard: STP acquirer only on inbound (abono)
                 if classification == "stp_acquirer":
                     if movement_type != "abono" and (amount is None or amount <= 0):
+                        continue
+                # Special guard: Settlements only on outbound (cargo/debit)
+                if classification == "settlement_to_merchant":
+                    if movement_type != "cargo" and (amount is None or amount >= 0):
                         continue
                 return classification, acquirer, "auto"
 
@@ -196,9 +203,12 @@ def classify_movement(
         for classification, acquirer, tokens in KEYWORD_RULES:
             for token in tokens:
                 if _normalize(token) in ref_norm:
-                    # Same STP guard as Tier 3
+                    # Same guards as Tier 3
                     if classification == "stp_acquirer":
                         if movement_type != "abono" and (amount is None or amount <= 0):
+                            continue
+                    if classification == "settlement_to_merchant":
+                        if movement_type != "cargo" and (amount is None or amount >= 0):
                             continue
                     return classification, acquirer, "auto"
 

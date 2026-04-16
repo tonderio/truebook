@@ -36,13 +36,13 @@ LABEL_DESCRIPTIONS = {
     "unlimit_acquirer": "Deposit from Unlimit/Unlimint (card processor) via BBVA. Usually contains 'UNLIMINT' + CLABE 012180001260409691.",
     "pagsmile_acquirer": "Deposit from Pagsmile/OXXO Pay (cash payments) via Finco Pay. Usually contains 'FINCO PAY' or 'NEBULA NETWORK'.",
     "stp_acquirer": "Deposit from STP (SPEI network) as acquirer inbound. Contains 'LIQUIDACION' + 'TRES COMAS'.",
-    "settlement_to_merchant": "Outbound SPEI transfer to a merchant (payout/dispersión). Contains merchant name + 'OUT' or 'SETTLEMENTS'.",
-    "revenue": "Tonder's own revenue transfer. Goes to 'TONDER BBVA 2' CLABE 012580001199498360.",
+    "settlement_to_merchant": "Outbound SPEI Cargo (debit) to a merchant — payout/dispersión. Pattern: 'SPEI {MERCHANT_NAME} W{CODE}' in Cargo column. Only Cargo movements. Not reconciled against acquirers directly — what matters is fees, tax, rolling reserve per merchant.",
+    "revenue": "DEPRECATED — use transfer_between_accounts instead. 'SPEI Revenue' is actually Tonder moving money between own accounts.",
     "investment": "Bank investment operation — apertura, pago capital, intereses, mesa de dinero.",
     "tax": "Tax withholding — ISR retention on investments.",
-    "bank_expense": "Bank fee — 'Comisión Transferencia' SPEI fees and their IVA.",
+    "bank_expense": "Bank fee — includes 'COM. SPEI', 'IVA SPEI', 'Comisión Transferencia' and their IVA. Always a Cargo (debit).",
     "currency_sale": "Foreign currency sale — 'Venta de Divisas'.",
-    "transfer_between_accounts": "Transfer between Tonder's own bank accounts (e.g., Banregio ↔ BBVA).",
+    "transfer_between_accounts": "Transfer between Tonder's own accounts. Includes: 'SPEI Revenue' (Tonder moving revenue between accounts), 'REEMBOLSO CAMBIO', and transfers to/from own BBVA account CLABE 012580001168262297.",
 }
 
 SYSTEM_PROMPT = """You are Warren, a FinOps AI agent for TrueBook (Tonder's reconciliation platform).
