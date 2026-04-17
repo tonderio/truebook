@@ -108,89 +108,116 @@ def _month_bounds(year: int, month: int) -> Tuple[str, str]:
 
 def _extract_items_and_marker(data: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], Optional[str]]:
     """
-    Normalize Bitso SPEI v2 response shape. Typical shape:
-        { "success": true, "payload": [ {...}, {...} ] }
-    Some endpoints wrap under payload.deposits / payload.data.
-    Pagination markers seen in the wild: 'marker', 'next', 'next_marker',
-    or the FID of the last item used as the 'marker' for the next request.
+    Normalize Bitso SPEI v2 response shape. Real shape observed:
+        { "deposits": [ {...}, {...} ], "next_page_token": "xxx" }
+    Fallbacks kept for robustness.
     """
     if not isinstance(data, dict):
         return [], None
 
-    payload = data.get("payload", data)
+    # Real Bitso v2 SPEI shape — deposits at top level
+    items = (
+        data.get("deposits")
+        or data.get("data")
+        or data.get("items")
+        or data.get("results")
+        or []
+    )
+    marker = (
+        data.get("next_page_token")
+        or data.get("next")
+        or data.get("marker")
+        or data.get("next_marker")
+    )
 
-    # Case 1: payload is the list directly
-    if isinstance(payload, list):
-        items = payload
-        marker = data.get("next") or data.get("marker") or data.get("next_marker")
-    # Case 2: payload is a dict with a list under a known key
-    elif isinstance(payload, dict):
-        items = (
-            payload.get("deposits")
-            or payload.get("data")
-            or payload.get("items")
-            or payload.get("results")
-            or []
-        )
-        marker = (
-            payload.get("next")
-            or payload.get("marker")
-            or payload.get("next_marker")
-            or data.get("next")
-            or data.get("marker")
-            or data.get("next_marker")
-        )
-    else:
-        items, marker = [], None
+    # Legacy fallback: response wrapped in payload
+    if not items and isinstance(data.get("payload"), (list, dict)):
+        payload = data["payload"]
+        if isinstance(payload, list):
+            items = payload
+        else:
+            items = (
+                payload.get("deposits")
+                or payload.get("data")
+                or payload.get("items")
+                or []
+            )
+            if not marker:
+                marker = (
+                    payload.get("next_page_token")
+                    or payload.get("next")
+                    or payload.get("marker")
+                )
 
     return items or [], marker
 
 
+def _parse_iso_date(s: Optional[str]) -> Optional[str]:
+    """Extract YYYY-MM-DD from an ISO timestamp string."""
+    if not s or not isinstance(s, str) or len(s) < 10:
+        return None
+    return s[:10]
+
+
 def download_monthly_deposits(year: int, month: int, page_limit: int = 100) -> List[Dict[str, Any]]:
     """
-    Fetch all SPEI deposits for the given month. Paginates until exhausted.
-    Returns the raw list of deposit objects as received from Bitso.
+    Fetch all SPEI deposits for the given month.
+
+    Bitso's `/spei/v2/deposits` endpoint pagination uses `next_page_token`.
+    Date filtering: we try a broad set of likely query-param names so this
+    works regardless of which variant Bitso honors, and then filter
+    client-side by `operation_date` to be safe.
     """
     start_date, end_date = _month_bounds(year, month)
     path = "/spei/v2/deposits"
 
     all_deposits: List[Dict[str, Any]] = []
-    marker: Optional[str] = None
+    token: Optional[str] = None
     pages = 0
 
     while True:
         params: Dict[str, Any] = {
+            # Try multiple date param conventions; API ignores unknown ones
+            "operation_from": start_date,
+            "operation_to": end_date,
             "start_date": start_date,
             "end_date": end_date,
             "limit": page_limit,
         }
-        if marker:
-            params["marker"] = marker
+        if token:
+            params["next_page_token"] = token
 
         data = _request("GET", path, params=params)
-        items, next_marker = _extract_items_and_marker(data)
+        items, next_token = _extract_items_and_marker(data)
 
         if not items:
             break
         all_deposits.extend(items)
         pages += 1
 
-        # Fallback: if API didn't return a next marker but the page is full,
-        # use the last item's FID as the marker for the next page.
-        if not next_marker and len(items) >= page_limit:
-            last = items[-1]
-            next_marker = last.get("fid") or last.get("id")
-
-        if not next_marker or len(items) < page_limit:
+        if not next_token:
             break
-        marker = next_marker
+        token = next_token
 
-        # Safety cap
-        if pages > 500:
-            logger.warning("Bitso: aborting pagination after 500 pages")
+        # Safety cap — accounts with very high volume
+        if pages > 2000:
+            logger.warning("Bitso: aborting pagination after 2000 pages")
             break
 
-    return all_deposits
+    # Client-side filter by operation_date in the target month
+    # (covers cases where the API didn't honor date params server-side)
+    target = f"{year:04d}-{month:02d}"
+    filtered = []
+    for d in all_deposits:
+        op_date = _parse_iso_date(d.get("operation_date") or d.get("created_at"))
+        if op_date and op_date.startswith(target):
+            filtered.append(d)
+
+    logger.info(
+        "Bitso: fetched %d deposits across %d pages; %d in target month %s",
+        len(all_deposits), pages, len(filtered), target,
+    )
+    return filtered
 
 
 def test_connection() -> Dict[str, Any]:
