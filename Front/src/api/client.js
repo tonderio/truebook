@@ -1,8 +1,15 @@
 import axios from 'axios'
 
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api',
-})
+// Production backend URL with /api suffix — hardcoded to avoid env var issues
+const PROD_API = 'https://truebook-production.up.railway.app/api'
+const envUrl = import.meta.env.VITE_API_URL
+const isDev = import.meta.env.DEV
+
+const baseURL = isDev
+  ? (envUrl || '/api')
+  : PROD_API
+
+const api = axios.create({ baseURL })
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token')
