@@ -185,7 +185,9 @@ def download_monthly_deposits(year: int, month: int, page_limit: int = 100) -> L
             "limit": page_limit,
         }
         if token:
-            params["next_page_token"] = token
+            # Bitso returns `next_page_token` in the response but expects
+            # `page_token` in the request query string.
+            params["page_token"] = token
 
         data = _request("GET", path, params=params)
         items, next_token = _extract_items_and_marker(data)

@@ -104,59 +104,57 @@ def test_bitso_connection(current_user: User = Depends(get_current_user)):
 def debug_bitso_raw(
     year: int,
     month: int,
+    max_pages: int = 20,
     current_user: User = Depends(get_current_user),
 ):
     """
-    Diagnostic: tries multiple pagination param names to figure out which one
-    actually advances Bitso's pagination cursor.
+    Diagnostic: fully paginates Bitso deposits using page_token and reports
+    date distribution so we can see what months are accessible.
     """
     if not bitso_api.is_configured():
         return {"error": "Bitso API not configured"}
     try:
         start_date, end_date = bitso_api._month_bounds(year, month)
+        all_items = []
+        pages_fetched = 0
+        token = None
+        last_token = None
 
-        # Page 1 — no token
-        data1 = bitso_api._request("GET", "/spei/v2/deposits", params={"limit": 100})
-        items1, marker1 = bitso_api._extract_items_and_marker(data1)
-        p1_dates = sorted({
-            (d.get("operation_date") or (d.get("created_at") or "")[:10])
-            for d in items1
-        })
-        first_fid = items1[0].get("fid") if items1 else None
-        last_fid = items1[-1].get("fid") if items1 else None
+        for _ in range(max_pages):
+            params = {"limit": 100}
+            if token:
+                params["page_token"] = token
+            data = bitso_api._request("GET", "/spei/v2/deposits", params=params)
+            items, next_token = bitso_api._extract_items_and_marker(data)
+            if not items:
+                break
+            all_items.extend(items)
+            pages_fetched += 1
+            last_token = next_token
+            if not next_token or next_token == token:
+                break
+            token = next_token
 
-        # Try each pagination param name with the returned token
-        variants = {}
-        if marker1:
-            for param_name in ["next_page_token", "marker", "page_token", "cursor", "after"]:
-                try:
-                    data_v = bitso_api._request(
-                        "GET", "/spei/v2/deposits",
-                        params={"limit": 100, param_name: marker1},
-                    )
-                    items_v, marker_v = bitso_api._extract_items_and_marker(data_v)
-                    first_fid_v = items_v[0].get("fid") if items_v else None
-                    advanced = bool(first_fid_v and first_fid_v != first_fid)
-                    variants[param_name] = {
-                        "item_count": len(items_v),
-                        "first_fid": first_fid_v,
-                        "same_marker": marker_v == marker1,
-                        "advanced": advanced,
-                    }
-                except Exception as e:
-                    variants[param_name] = {"error": str(e)}
+        # Count deposits per month
+        from collections import Counter
+        month_counter = Counter()
+        for d in all_items:
+            op_date = d.get("operation_date") or (d.get("created_at") or "")[:10]
+            if op_date and len(op_date) >= 7:
+                month_counter[op_date[:7]] += 1
+
+        in_target = sum(
+            1 for d in all_items
+            if (d.get("operation_date") or "").startswith(f"{year:04d}-{month:02d}")
+        )
 
         return {
-            "page1": {
-                "item_count": len(items1),
-                "first_fid": first_fid,
-                "last_fid": last_fid,
-                "first_date": items1[0].get("operation_date") if items1 else None,
-                "last_date": items1[-1].get("operation_date") if items1 else None,
-                "unique_operation_dates": p1_dates,
-                "next_marker_preview": (marker1[:40] + "...") if marker1 else None,
-            },
-            "pagination_variants": variants,
+            "target_month": f"{year:04d}-{month:02d}",
+            "pages_fetched": pages_fetched,
+            "total_deposits_loaded": len(all_items),
+            "in_target_month": in_target,
+            "deposits_by_month": dict(sorted(month_counter.items())),
+            "pagination_ended_early": last_token in (None, "", token),
         }
     except Exception as e:
         return {"error": str(e)}
