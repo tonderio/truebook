@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { sftpApi } from '../api/client'
 import {
   Server, CheckCircle2, XCircle, Loader2, RefreshCw,
-  Download, Clock, AlertTriangle, Wifi, WifiOff,
+  Download, Clock, AlertTriangle, Wifi, WifiOff, Zap,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { format } from 'date-fns'
@@ -14,6 +14,7 @@ const ACQ_COLORS = {
   stp: 't-badge-violet',
   pagsmile: 't-badge-orange',
   paysafe: 't-badge-gray',
+  bitso: 't-badge-emerald',
 }
 
 function StatusCard({ acq, onTest, testing }) {
@@ -30,15 +31,24 @@ function StatusCard({ acq, onTest, testing }) {
     ? { label: 'Pausado', dot: 'bg-amber-500', text: 'text-amber-700' }
     : { label: 'Sin configurar', dot: 'bg-stone-300', text: 'text-stone-400' }
 
+  const isApi = acq.kind === 'api'
+
   return (
     <div className="t-card fade-in p-5 flex flex-col">
       {/* Header: name + status dot */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          {acq.is_configured
-            ? <Wifi size={14} className="text-stone-500" strokeWidth={2} />
-            : <WifiOff size={14} className="text-stone-300" strokeWidth={2} />}
+          {isApi
+            ? <Zap size={14} className={acq.is_configured ? 'text-emerald-600' : 'text-stone-300'} strokeWidth={2} />
+            : acq.is_configured
+              ? <Wifi size={14} className="text-stone-500" strokeWidth={2} />
+              : <WifiOff size={14} className="text-stone-300" strokeWidth={2} />}
           <span className="text-[14px] font-semibold text-stone-900">{acq.label}</span>
+          {isApi && (
+            <span className="text-[9px] font-semibold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">
+              API
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1.5">
           <span className={clsx('w-1.5 h-1.5 rounded-full', statusConfig.dot)} />
@@ -50,23 +60,34 @@ function StatusCard({ acq, onTest, testing }) {
       {acq.is_configured ? (
         <div className="space-y-2.5 mb-4 flex-1">
           <div>
-            <div className="text-[10px] uppercase tracking-wide text-stone-400 font-medium mb-0.5">Host</div>
+            <div className="text-[10px] uppercase tracking-wide text-stone-400 font-medium mb-0.5">
+              {isApi ? 'Base URL' : 'Host'}
+            </div>
             <div className="text-[11px] font-mono text-stone-700 break-all leading-snug" title={acq.host}>
               {acq.host}
             </div>
           </div>
-          <div className="flex gap-6">
+          {isApi ? (
             <div>
-              <div className="text-[10px] uppercase tracking-wide text-stone-400 font-medium mb-0.5">Usuario</div>
-              <div className="text-[12px] text-stone-700 font-mono">{acq.username}</div>
+              <div className="text-[10px] uppercase tracking-wide text-stone-400 font-medium mb-0.5">API Key</div>
+              <div className="text-[12px] text-stone-700 font-mono">{acq.username || '—'}</div>
             </div>
-            <div>
-              <div className="text-[10px] uppercase tracking-wide text-stone-400 font-medium mb-0.5">Puerto</div>
-              <div className="text-[12px] text-stone-700 font-mono">{acq.port}</div>
+          ) : (
+            <div className="flex gap-6">
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-stone-400 font-medium mb-0.5">Usuario</div>
+                <div className="text-[12px] text-stone-700 font-mono">{acq.username}</div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-stone-400 font-medium mb-0.5">Puerto</div>
+                <div className="text-[12px] text-stone-700 font-mono">{acq.port}</div>
+              </div>
             </div>
-          </div>
+          )}
           <div>
-            <div className="text-[10px] uppercase tracking-wide text-stone-400 font-medium mb-0.5">Directorio</div>
+            <div className="text-[10px] uppercase tracking-wide text-stone-400 font-medium mb-0.5">
+              {isApi ? 'Endpoint' : 'Directorio'}
+            </div>
             <div className="text-[12px] text-stone-700 font-mono">{acq.remote_dir}</div>
           </div>
         </div>
@@ -158,7 +179,7 @@ export default function SftpModule() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-semibold text-stone-900">Conexiones SFTP</h1>
+          <h1 className="text-xl font-semibold text-stone-900">Conexiones</h1>
           <p className="text-sm text-stone-500 mt-0.5">
             {active} activas · {configured} configuradas · {acquirers.length} adquirentes
           </p>
@@ -170,7 +191,7 @@ export default function SftpModule() {
       ) : (
         <>
           {/* Acquirer cards */}
-          <div className="grid grid-cols-4 gap-4 mb-8">
+          <div className="grid grid-cols-5 gap-4 mb-8">
             {acquirers.map(acq => (
               <StatusCard
                 key={acq.name}

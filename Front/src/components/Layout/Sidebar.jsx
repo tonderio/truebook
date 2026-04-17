@@ -13,7 +13,7 @@ const NAV = [
   { label: 'Corridas', to: '/processes', icon: ListChecks },
   { label: 'Nueva corrida', to: '/processes/new', icon: Plus },
   { type: 'divider' },
-  { label: 'Conexiones SFTP', to: '/sftp', icon: Server },
+  { label: 'Conexiones', to: '/sftp', icon: Server },
   { type: 'divider' },
   { label: 'Warren AI', to: '/processes', icon: Bot, tag: 'AI' },
   { label: 'Alertas', to: '/processes', icon: AlertTriangle, soon: true },

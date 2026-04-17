@@ -138,6 +138,58 @@ def _safe_float(val: Any) -> float:
         return 0.0
 
 
+def parse_bitso_api_deposits(deposits: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Parse a list of Bitso SPEI v2 deposit objects (from the API) into the same
+    shape `parse_bitso()` returns, so the rest of the pipeline (matcher, db
+    writer) doesn't need to care where the data came from.
+
+    Bitso deposit fields (v2):
+        fid, amount, currency, created_at, sender_name, sender_clabe,
+        beneficiary_name, clave_rastreo, concepto_pago, status, ...
+    """
+    lines: List[Dict[str, Any]] = []
+    for dep in deposits:
+        if not isinstance(dep, dict):
+            continue
+        created_at = dep.get("created_at") or dep.get("creation_date")
+        txn_date = None
+        if isinstance(created_at, str) and len(created_at) >= 10:
+            txn_date = _parse_date(created_at[:10])
+        amount = _safe_float(dep.get("amount"))
+        if amount <= 0:
+            continue  # skip zero/negative
+
+        description_parts = [
+            str(dep.get("concepto_pago") or "").strip(),
+            str(dep.get("clave_rastreo") or "").strip(),
+        ]
+        description = " | ".join(p for p in description_parts if p) or None
+
+        lines.append({
+            "line_index": len(lines),
+            "txn_date": txn_date,
+            "txn_id": str(dep.get("fid") or dep.get("folio") or "").strip() or None,
+            "merchant_name": str(dep.get("sender_name") or "").strip() or None,
+            "gross_amount": round(amount, 2),
+            "fee_amount": 0.0,  # Bitso doesn't charge fees on incoming SPEI
+            "net_amount": round(amount, 2),
+            "description": description,
+            "status": str(dep.get("status") or "").strip() or None,
+            "raw_row": {k: (str(v) if v is not None else None) for k, v in dep.items()},
+        })
+
+    dates = [l["txn_date"] for l in lines if l["txn_date"]]
+    total_amount = sum(l["net_amount"] for l in lines)
+
+    return {
+        "lines": lines,
+        "total_amount": round(total_amount, 2),
+        "period_start": min(dates) if dates else None,
+        "period_end": max(dates) if dates else None,
+    }
+
+
 def parse_bitso(content: bytes, filename: str) -> Dict[str, Any]:
     """
     Parse a Bitso report file (CSV or Excel) into structured data.

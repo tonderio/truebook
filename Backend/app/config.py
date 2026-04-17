@@ -65,6 +65,13 @@ class Settings(BaseSettings):
     PAYSAFE_SFTP_PRIVATE_KEY: Optional[str] = None
     PAYSAFE_SFTP_REMOTE_DIR: str = "/"
 
+    # Bitso Payouts & Funding API (SPEI v2)
+    BITSO_API_ENABLED: bool = False
+    BITSO_API_KEY: Optional[str] = None
+    BITSO_API_SECRET: Optional[str] = None
+    BITSO_API_BASE_URL: str = "https://api.bitso.com"
+    BITSO_API_TIMEOUT_SECONDS: int = 30
+
     # Warren AI Agent (Anthropic Claude)
     ANTHROPIC_API_KEY: Optional[str] = None
 

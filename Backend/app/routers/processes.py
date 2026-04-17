@@ -439,6 +439,131 @@ def _run_full_process(process_id: int):
         else:
             _log(db, process_id, "kushki", "No hay archivos Kushki (manuales o SFTP) para procesar", "warning")
 
+        # ── Stage 5b: Ingest Bitso deposits from Bitso SPEI v2 API ─────────
+        if settings.BITSO_API_ENABLED:
+            from app.services import bitso_api
+            from app.services.bitso_parser import parse_bitso_api_deposits
+            from app.models.bitso import BitsoReport, BitsoReportLine, BitsoBanregioMatch
+
+            if bitso_api.is_configured():
+                _log(db, process_id, "bitso_api", "Conectando a Bitso API para descargar depósitos SPEI...")
+                try:
+                    deposits = bitso_api.download_monthly_deposits(year, month)
+                    _log(db, process_id, "bitso_api", f"Bitso API: {len(deposits)} depósito(s) SPEI descargado(s)")
+
+                    if deposits:
+                        # Persist the raw payload to disk so it shows up in SFTP/API downloads
+                        import json as _json
+                        api_dir = os.path.join(settings.UPLOAD_DIR, str(process_id), "auto_bitso_api")
+                        os.makedirs(api_dir, exist_ok=True)
+                        fname = f"sftp_bitso_api_{year}_{month:02d}.json"
+                        fpath = os.path.join(api_dir, fname)
+
+                        # Idempotent: remove previous auto-Bitso file row + file
+                        auto_segment = os.path.join(str(process_id), "auto_bitso_api").replace(os.sep, "%")
+                        prev_files = (
+                            db.query(UploadedFile)
+                            .filter(
+                                UploadedFile.process_id == process_id,
+                                UploadedFile.file_type == "bitso",
+                                UploadedFile.stored_path.like(f"%{auto_segment}%"),
+                            )
+                            .all()
+                        )
+                        for rec in prev_files:
+                            try:
+                                if os.path.exists(rec.stored_path):
+                                    os.remove(rec.stored_path)
+                            except Exception:
+                                pass
+                            db.delete(rec)
+                        db.commit()
+
+                        raw_bytes = _json.dumps(deposits, default=str).encode("utf-8")
+                        with open(fpath, "wb") as fp:
+                            fp.write(raw_bytes)
+
+                        file_rec = UploadedFile(
+                            process_id=process_id,
+                            file_type="bitso",
+                            original_name=fname,
+                            stored_path=fpath,
+                            file_size=len(raw_bytes),
+                            status="uploaded",
+                        )
+                        db.add(file_rec)
+                        db.commit()
+                        db.refresh(file_rec)
+
+                        # Revert existing 'bitso' classifications + remove previous auto report
+                        old_matches = db.query(BitsoBanregioMatch).filter(
+                            BitsoBanregioMatch.process_id == process_id
+                        ).all()
+                        for m in old_matches:
+                            cls = db.query(BanregioMovementClassification).filter(
+                                BanregioMovementClassification.process_id == process_id,
+                                BanregioMovementClassification.movement_index == m.banregio_movement_index,
+                                BanregioMovementClassification.classification == "bitso",
+                            ).first()
+                            if cls:
+                                cls.classification = "unclassified"
+                                cls.acquirer = None
+                                cls.notes = "Revertido por re-sync Bitso API"
+                        db.query(BitsoBanregioMatch).filter(
+                            BitsoBanregioMatch.process_id == process_id
+                        ).delete()
+                        old_reports = db.query(BitsoReport).filter(
+                            BitsoReport.process_id == process_id
+                        ).all()
+                        for old in old_reports:
+                            db.query(BitsoReportLine).filter(BitsoReportLine.report_id == old.id).delete()
+                        db.query(BitsoReport).filter(BitsoReport.process_id == process_id).delete()
+                        db.commit()
+
+                        # Parse API payload → BitsoReport + lines
+                        parsed = parse_bitso_api_deposits(deposits)
+                        report = BitsoReport(
+                            process_id=process_id,
+                            file_id=file_rec.id,
+                            period_start=parsed["period_start"],
+                            period_end=parsed["period_end"],
+                            total_rows=len(parsed["lines"]),
+                            total_amount=parsed["total_amount"],
+                        )
+                        db.add(report)
+                        db.commit()
+                        db.refresh(report)
+
+                        for line in parsed["lines"]:
+                            db.add(BitsoReportLine(
+                                report_id=report.id,
+                                line_index=line["line_index"],
+                                txn_date=line["txn_date"],
+                                txn_id=line.get("txn_id"),
+                                merchant_name=line.get("merchant_name"),
+                                gross_amount=line["gross_amount"],
+                                fee_amount=line["fee_amount"],
+                                net_amount=line["net_amount"],
+                                description=line.get("description"),
+                                status=line.get("status"),
+                                raw_row=line.get("raw_row"),
+                            ))
+                        db.commit()
+                        file_rec.status = "parsed"
+                        db.commit()
+                        _log(
+                            db, process_id, "bitso_api",
+                            f"Bitso persistido: {len(parsed['lines'])} líneas, total ${parsed['total_amount']:,.2f}",
+                        )
+                except Exception as e:
+                    _log(db, process_id, "bitso_api", f"Error en descarga Bitso API: {e}", "warning")
+            else:
+                _log(
+                    db, process_id, "bitso_api",
+                    "BITSO_API_ENABLED=true pero faltan BITSO_API_KEY/SECRET (se omite auto-descarga)",
+                    "warning",
+                )
+
         # ── Stage 6: Parse Banregio ─────────────────────────────────────────
         _set_stage(db, proc, "parsing_banregio", 75)
         banregio_files = (
