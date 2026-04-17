@@ -24,57 +24,71 @@ function StatusCard({ acq, onTest, testing }) {
     onTest(acq.name, (res) => setResult(res))
   }
 
+  const statusConfig = acq.is_configured && acq.enabled
+    ? { label: 'Activo', dot: 'bg-emerald-500', text: 'text-emerald-700' }
+    : acq.is_configured
+    ? { label: 'Pausado', dot: 'bg-amber-500', text: 'text-amber-700' }
+    : { label: 'Sin configurar', dot: 'bg-stone-300', text: 'text-stone-400' }
+
   return (
-    <div className="t-card fade-in">
-      <div className="flex items-center justify-between mb-3">
+    <div className="t-card fade-in p-5 flex flex-col">
+      {/* Header: name + status dot */}
+      <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <div className={clsx(
-            'w-8 h-8 rounded-lg flex items-center justify-center',
-            acq.is_configured ? 'bg-emerald-50' : 'bg-stone-100'
-          )}>
-            {acq.is_configured ? <Wifi size={15} className="text-emerald-600" /> : <WifiOff size={15} className="text-stone-400" />}
-          </div>
-          <span className={`t-badge ${ACQ_COLORS[acq.name] || 't-badge-gray'}`}>{acq.label}</span>
+          {acq.is_configured
+            ? <Wifi size={14} className="text-stone-500" strokeWidth={2} />
+            : <WifiOff size={14} className="text-stone-300" strokeWidth={2} />}
+          <span className="text-[14px] font-semibold text-stone-900">{acq.label}</span>
         </div>
-        <span className={`t-badge ${
-          acq.is_configured && acq.enabled ? 't-badge-emerald' :
-          acq.is_configured ? 't-badge-amber' : 't-badge-gray'
-        }`}>
-          {acq.is_configured && acq.enabled ? 'Activo' :
-           acq.is_configured ? 'Configurado' : 'No configurado'}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className={clsx('w-1.5 h-1.5 rounded-full', statusConfig.dot)} />
+          <span className={clsx('text-[11px] font-medium', statusConfig.text)}>{statusConfig.label}</span>
+        </div>
       </div>
 
+      {/* Body: config details */}
       {acq.is_configured ? (
-        <div className="space-y-1.5 mb-4">
-          <div className="flex items-center gap-2 text-xs text-stone-500">
-            <Server size={11} />
-            <span className="font-mono text-stone-600">{acq.host}</span>
+        <div className="space-y-2.5 mb-4 flex-1">
+          <div>
+            <div className="text-[10px] uppercase tracking-wide text-stone-400 font-medium mb-0.5">Host</div>
+            <div className="text-[11px] font-mono text-stone-700 break-all leading-snug" title={acq.host}>
+              {acq.host}
+            </div>
           </div>
-          <div className="flex items-center gap-2 text-xs text-stone-400">
-            <span>Usuario: <span className="text-stone-600">{acq.username}</span></span>
-            <span className="text-stone-300">|</span>
-            <span>Puerto: {acq.port}</span>
+          <div className="flex gap-6">
+            <div>
+              <div className="text-[10px] uppercase tracking-wide text-stone-400 font-medium mb-0.5">Usuario</div>
+              <div className="text-[12px] text-stone-700 font-mono">{acq.username}</div>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-wide text-stone-400 font-medium mb-0.5">Puerto</div>
+              <div className="text-[12px] text-stone-700 font-mono">{acq.port}</div>
+            </div>
           </div>
-          <div className="text-xs text-stone-400">
-            Directorio: <span className="font-mono text-stone-500">{acq.remote_dir}</span>
+          <div>
+            <div className="text-[10px] uppercase tracking-wide text-stone-400 font-medium mb-0.5">Directorio</div>
+            <div className="text-[12px] text-stone-700 font-mono">{acq.remote_dir}</div>
           </div>
         </div>
       ) : (
-        <p className="text-xs text-stone-400 mb-4">
-          Sin credenciales configuradas. Agrega las variables de entorno en Railway.
+        <p className="text-[12px] text-stone-400 mb-4 flex-1 leading-relaxed">
+          Sin credenciales. Agrega las variables de entorno en Railway para conectar.
         </p>
       )}
 
       {/* Test result */}
       {result && (
         <div className={clsx(
-          'rounded-lg px-3 py-2 mb-3 text-xs',
-          result.success ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-800'
+          'rounded-md px-2.5 py-2 mb-3 text-[11px] leading-snug border',
+          result.success
+            ? 'bg-emerald-50/60 border-emerald-100 text-emerald-800'
+            : 'bg-red-50/60 border-red-100 text-red-800'
         )}>
-          <div className="flex items-center gap-1.5">
-            {result.success ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
-            <span className="font-medium">{result.success ? result.message : result.error}</span>
+          <div className="flex items-start gap-1.5">
+            {result.success
+              ? <CheckCircle2 size={12} className="shrink-0 mt-0.5" />
+              : <XCircle size={12} className="shrink-0 mt-0.5" />}
+            <span>{result.success ? result.message : result.error}</span>
           </div>
         </div>
       )}
@@ -82,12 +96,12 @@ function StatusCard({ acq, onTest, testing }) {
       <button
         onClick={handleTest}
         disabled={!acq.is_configured || testing}
-        className="btn-secondary w-full flex items-center justify-center gap-2 text-xs disabled:opacity-40"
+        className="flex items-center justify-center gap-1.5 text-[12px] font-medium text-stone-600 hover:text-stone-900 hover:bg-stone-50 rounded-md py-2 border border-stone-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
       >
         {testing ? (
-          <><Loader2 size={12} className="animate-spin" /> Probando...</>
+          <><Loader2 size={11} className="animate-spin" /> Probando...</>
         ) : (
-          <><RefreshCw size={12} /> Probar conexion</>
+          <><RefreshCw size={11} /> Probar conexion</>
         )}
       </button>
     </div>
