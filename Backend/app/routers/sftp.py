@@ -100,6 +100,64 @@ def test_bitso_connection(current_user: User = Depends(get_current_user)):
     }
 
 
+@router.get("/bitso/debug")
+def debug_bitso_raw(
+    year: int,
+    month: int,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Diagnostic: returns the RAW Bitso API response for the given month so we
+    can inspect pagination markers and response shape. Caps the payload so we
+    don't flood the client.
+    """
+    if not bitso_api.is_configured():
+        return {"error": "Bitso API not configured"}
+    try:
+        start_date, end_date = bitso_api._month_bounds(year, month)
+
+        # First page — no marker
+        page1 = bitso_api._request("GET", "/spei/v2/deposits", params={
+            "start_date": start_date,
+            "end_date": end_date,
+            "limit": 100,
+        })
+        items1, marker1 = bitso_api._extract_items_and_marker(page1)
+
+        # Second page if marker exists
+        page2_info = None
+        if marker1:
+            page2 = bitso_api._request("GET", "/spei/v2/deposits", params={
+                "start_date": start_date,
+                "end_date": end_date,
+                "limit": 100,
+                "marker": marker1,
+            })
+            items2, marker2 = bitso_api._extract_items_and_marker(page2)
+            page2_info = {
+                "top_level_keys": list(page2.keys()) if isinstance(page2, dict) else "non-dict",
+                "item_count": len(items2),
+                "next_marker": marker2,
+                "first_item": items2[0] if items2 else None,
+                "last_item": items2[-1] if items2 else None,
+            }
+
+        return {
+            "request_date_range": {"start": start_date, "end": end_date},
+            "page1": {
+                "top_level_keys": list(page1.keys()) if isinstance(page1, dict) else "non-dict",
+                "payload_type": type(page1.get("payload")).__name__ if isinstance(page1, dict) else "n/a",
+                "item_count": len(items1),
+                "next_marker": marker1,
+                "first_item": items1[0] if items1 else None,
+                "last_item": items1[-1] if items1 else None,
+            },
+            "page2": page2_info,
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
 @router.post("/{acquirer}/test")
 def test_sftp_connection(
     acquirer: str,
