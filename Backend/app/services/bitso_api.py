@@ -106,13 +106,49 @@ def _month_bounds(year: int, month: int) -> Tuple[str, str]:
     return f"{year:04d}-{month:02d}-01", f"{year:04d}-{month:02d}-{last_day:02d}"
 
 
+def _extract_items_and_marker(data: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    """
+    Normalize Bitso SPEI v2 response shape. Typical shape:
+        { "success": true, "payload": [ {...}, {...} ] }
+    Some endpoints wrap under payload.deposits / payload.data.
+    Pagination markers seen in the wild: 'marker', 'next', 'next_marker',
+    or the FID of the last item used as the 'marker' for the next request.
+    """
+    if not isinstance(data, dict):
+        return [], None
+
+    payload = data.get("payload", data)
+
+    # Case 1: payload is the list directly
+    if isinstance(payload, list):
+        items = payload
+        marker = data.get("next") or data.get("marker") or data.get("next_marker")
+    # Case 2: payload is a dict with a list under a known key
+    elif isinstance(payload, dict):
+        items = (
+            payload.get("deposits")
+            or payload.get("data")
+            or payload.get("items")
+            or payload.get("results")
+            or []
+        )
+        marker = (
+            payload.get("next")
+            or payload.get("marker")
+            or payload.get("next_marker")
+            or data.get("next")
+            or data.get("marker")
+            or data.get("next_marker")
+        )
+    else:
+        items, marker = [], None
+
+    return items or [], marker
+
+
 def download_monthly_deposits(year: int, month: int, page_limit: int = 100) -> List[Dict[str, Any]]:
     """
-    Fetch all SPEI deposits for the given month.
-
-    Paginates through `/spei/v2/deposits` using the `marker` cursor until
-    no more pages are returned.
-
+    Fetch all SPEI deposits for the given month. Paginates until exhausted.
     Returns the raw list of deposit objects as received from Bitso.
     """
     start_date, end_date = _month_bounds(year, month)
@@ -132,25 +168,26 @@ def download_monthly_deposits(year: int, month: int, page_limit: int = 100) -> L
             params["marker"] = marker
 
         data = _request("GET", path, params=params)
-        payload = data.get("payload") or data
-        # Bitso typically wraps the list under payload.deposits or payload directly.
-        items = payload.get("deposits") if isinstance(payload, dict) else payload
+        items, next_marker = _extract_items_and_marker(data)
+
         if not items:
             break
         all_deposits.extend(items)
         pages += 1
 
-        # Pagination: the response includes a "next" marker or similar.
-        next_marker = None
-        if isinstance(payload, dict):
-            next_marker = payload.get("next") or payload.get("marker") or payload.get("next_marker")
+        # Fallback: if API didn't return a next marker but the page is full,
+        # use the last item's FID as the marker for the next page.
+        if not next_marker and len(items) >= page_limit:
+            last = items[-1]
+            next_marker = last.get("fid") or last.get("id")
+
         if not next_marker or len(items) < page_limit:
             break
         marker = next_marker
 
-        # Safety cap — Bitso should have <50 pages/month at our volume.
-        if pages > 200:
-            logger.warning("Bitso: aborting pagination after 200 pages")
+        # Safety cap
+        if pages > 500:
+            logger.warning("Bitso: aborting pagination after 500 pages")
             break
 
     return all_deposits
@@ -158,23 +195,29 @@ def download_monthly_deposits(year: int, month: int, page_limit: int = 100) -> L
 
 def test_connection() -> Dict[str, Any]:
     """
-    Light connectivity check — fetches the current month with limit=1.
-    Returns a dict with { ok: bool, message|error, sample? }.
+    Light connectivity check — fetches ONE page of deposits to verify the API
+    call succeeds. Does not paginate.
     """
     if not is_configured():
         return {"ok": False, "error": "No configurado — faltan BITSO_API_KEY o BITSO_API_SECRET"}
     from datetime import datetime
     now = datetime.utcnow()
     try:
-        deposits = download_monthly_deposits(now.year, now.month, page_limit=1)
-        if deposits:
-            sample = deposits[0]
+        start_date, end_date = _month_bounds(now.year, now.month)
+        data = _request("GET", "/spei/v2/deposits", params={
+            "start_date": start_date,
+            "end_date": end_date,
+            "limit": 1,
+        })
+        items, _ = _extract_items_and_marker(data)
+        if items:
+            sample = items[0]
             created = sample.get("created_at") or sample.get("fid") or "—"
             return {
                 "ok": True,
-                "message": f"Conexión exitosa. {len(deposits)}+ depósito(s) en el mes actual",
+                "message": f"Conexión exitosa. Cuenta Bitso con depósitos en {start_date[:7]}.",
                 "sample_created_at": created,
             }
-        return {"ok": True, "message": "Conexión exitosa. Sin depósitos aún en el mes actual."}
+        return {"ok": True, "message": f"Conexión exitosa. Sin depósitos aún en {start_date[:7]}."}
     except Exception as e:
         return {"ok": False, "error": str(e)}
