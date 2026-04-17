@@ -107,52 +107,55 @@ def debug_bitso_raw(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Diagnostic: returns the RAW Bitso API response for the given month so we
-    can inspect pagination markers and response shape. Caps the payload so we
-    don't flood the client.
+    Diagnostic: fetches up to 3 pages of Bitso deposits and returns pagination
+    + date-filter observations. Useful to figure out whether date params are
+    honored and whether pagination advances.
     """
     if not bitso_api.is_configured():
         return {"error": "Bitso API not configured"}
     try:
         start_date, end_date = bitso_api._month_bounds(year, month)
 
-        # First page — no marker
-        page1 = bitso_api._request("GET", "/spei/v2/deposits", params={
-            "start_date": start_date,
-            "end_date": end_date,
-            "limit": 100,
-        })
-        items1, marker1 = bitso_api._extract_items_and_marker(page1)
-
-        # Second page if marker exists
-        page2_info = None
-        if marker1:
-            page2 = bitso_api._request("GET", "/spei/v2/deposits", params={
+        def _fetch(token=None):
+            params = {
+                "operation_from": start_date,
+                "operation_to": end_date,
                 "start_date": start_date,
                 "end_date": end_date,
                 "limit": 100,
-                "marker": marker1,
-            })
-            items2, marker2 = bitso_api._extract_items_and_marker(page2)
-            page2_info = {
-                "top_level_keys": list(page2.keys()) if isinstance(page2, dict) else "non-dict",
-                "item_count": len(items2),
-                "next_marker": marker2,
-                "first_item": items2[0] if items2 else None,
-                "last_item": items2[-1] if items2 else None,
             }
+            if token:
+                params["next_page_token"] = token
+            data = bitso_api._request("GET", "/spei/v2/deposits", params=params)
+            items, marker = bitso_api._extract_items_and_marker(data)
+            dates = sorted({
+                (d.get("operation_date") or (d.get("created_at") or "")[:10])
+                for d in items
+            })
+            return {
+                "top_level_keys": list(data.keys()) if isinstance(data, dict) else "non-dict",
+                "item_count": len(items),
+                "next_marker": marker,
+                "unique_operation_dates": dates,
+                "first_item_date": items[0].get("operation_date") if items else None,
+                "last_item_date": items[-1].get("operation_date") if items else None,
+            }
+
+        p1 = _fetch()
+        p2 = _fetch(p1["next_marker"]) if p1["next_marker"] else None
+        p3 = _fetch(p2["next_marker"]) if p2 and p2.get("next_marker") else None
+
+        # Same marker across pages would indicate param isn't respected
+        pagination_advancing = bool(
+            p2 and p2["next_marker"] and p2["next_marker"] != p1["next_marker"]
+        )
 
         return {
             "request_date_range": {"start": start_date, "end": end_date},
-            "page1": {
-                "top_level_keys": list(page1.keys()) if isinstance(page1, dict) else "non-dict",
-                "payload_type": type(page1.get("payload")).__name__ if isinstance(page1, dict) else "n/a",
-                "item_count": len(items1),
-                "next_marker": marker1,
-                "first_item": items1[0] if items1 else None,
-                "last_item": items1[-1] if items1 else None,
-            },
-            "page2": page2_info,
+            "pagination_advancing": pagination_advancing,
+            "page1": p1,
+            "page2": p2,
+            "page3": p3,
         }
     except Exception as e:
         return {"error": str(e)}
