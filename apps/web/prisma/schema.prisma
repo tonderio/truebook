@@ -1,0 +1,206 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ──────────────────────────────────────────────
+// Multi-tenancy
+// ──────────────────────────────────────────────
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  logoUrl   String?
+  plan      String   @default("starter")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members         TenantMember[]
+  processBindings ProcessBinding[]
+  auditLogs       AuditLog[]
+  scheduledRuns   ScheduledRun[]
+  slackConfig     SlackConfig?
+
+  @@map("tenants")
+}
+
+// ──────────────────────────────────────────────
+// Users & roles
+// ──────────────────────────────────────────────
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  ACCOUNTANT
+  VIEWER
+}
+
+model User {
+  id             String    @id @default(cuid())
+  name           String?
+  email          String    @unique
+  emailVerified  DateTime?
+  image          String?
+  hashedPassword String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  memberships     TenantMember[]
+  accounts        Account[]
+  sessions        Session[]
+  auditLogs       AuditLog[]
+  processBindings ProcessBinding[]
+
+  @@map("users")
+}
+
+model TenantMember {
+  id       String @id @default(cuid())
+  tenantId String
+  userId   String
+  role     Role   @default(VIEWER)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, userId])
+  @@index([userId])
+  @@map("tenant_members")
+}
+
+// ──────────────────────────────────────────────
+// NextAuth required models
+// ──────────────────────────────────────────────
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ──────────────────────────────────────────────
+// Process bridge (maps FastAPI processes to tenants)
+// ──────────────────────────────────────────────
+
+model ProcessBinding {
+  id               String @id @default(cuid())
+  tenantId         String
+  fastapiProcessId Int    @unique
+  createdById      String
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy User   @relation(fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+  @@map("process_bindings")
+}
+
+// ──────────────────────────────────────────────
+// Audit trail
+// ──────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  tenantId   String
+  userId     String
+  action     String
+  resource   String
+  resourceId String?
+  metadata   Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@index([tenantId, createdAt])
+  @@index([action])
+  @@map("audit_logs")
+}
+
+// ──────────────────────────────────────────────
+// Scheduled runs
+// ──────────────────────────────────────────────
+
+model ScheduledRun {
+  id            String   @id @default(cuid())
+  tenantId      String
+  name          String
+  cronExpr      String
+  processConfig Json     // { period_year, period_month, acquirers, autoIncrement }
+  isActive      Boolean  @default(true)
+  lastRunAt     DateTime?
+  nextRunAt     DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([isActive, nextRunAt])
+  @@map("scheduled_runs")
+}
+
+// ──────────────────────────────────────────────
+// Slack integration
+// ──────────────────────────────────────────────
+
+model SlackConfig {
+  id              String  @id @default(cuid())
+  tenantId        String  @unique
+  webhookUrl      String
+  channelName     String?
+  notifyOnComplete Boolean @default(true)
+  notifyOnFailure  Boolean @default(true)
+  notifyOnAnomaly  Boolean @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("slack_configs")
+}
