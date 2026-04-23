@@ -284,33 +284,32 @@ export default function Contabilidad() {
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-2 mb-4">
         <div className="relative flex-1 min-w-[220px] max-w-sm">
-          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
           <input
             type="text"
             placeholder="Buscar por nombre o periodo..."
             value={query}
             onChange={e => setQuery(e.target.value)}
-            className="t-input pl-9"
-            style={{ height: 36 }}
+            className="t-input pl-10"
           />
         </div>
         <select
           value={yearFilter}
           onChange={e => setYearFilter(e.target.value)}
           className="t-input"
-          style={{ height: 36, width: 'auto', minWidth: 170, paddingRight: 36 }}
+          style={{ width: 'auto', minWidth: 170, paddingRight: 36 }}
         >
           {years.map(y => (
             <option key={y} value={y}>{y === 'all' ? 'Todos los años' : y}</option>
           ))}
         </select>
-        <div className="flex items-center gap-0.5 bg-stone-100 rounded-lg p-0.5 overflow-x-auto flex-shrink-0">
+        <div className="flex items-center gap-0.5 bg-stone-100 rounded-xl p-1 overflow-x-auto flex-shrink-0" style={{ height: 42 }}>
           {STATUS_FILTERS.map(f => (
             <button
               key={f.value}
               onClick={() => setStatusFilter(f.value)}
               className={clsx(
-                'px-3 py-1 rounded-md text-[12px] font-medium transition-all whitespace-nowrap',
+                'px-3 h-full rounded-lg text-[13px] font-medium transition-all whitespace-nowrap',
                 statusFilter === f.value
                   ? 'bg-white text-stone-900 shadow-sm'
                   : 'text-stone-500 hover:text-stone-700'
