@@ -284,13 +284,18 @@ export default function Contabilidad() {
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-2 mb-4">
         <div className="relative flex-1 min-w-[220px] max-w-sm">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
+          <Search
+            size={14}
+            className="absolute top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none z-10"
+            style={{ left: 14 }}
+          />
           <input
             type="text"
             placeholder="Buscar por nombre o periodo..."
             value={query}
             onChange={e => setQuery(e.target.value)}
-            className="t-input pl-10"
+            className="t-input"
+            style={{ paddingLeft: 38 }}
           />
         </div>
         <select
