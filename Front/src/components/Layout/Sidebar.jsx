@@ -1,22 +1,21 @@
 import React from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
-  LayoutDashboard, ListChecks, Plus, LogOut,
-  SlidersHorizontal, Bot, AlertTriangle,
-  Settings, ArrowLeftRight, CreditCard, Server,
+  LayoutDashboard, BookOpen, LogOut,
+  Bot, AlertTriangle,
+  Settings, Server,
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import clsx from 'clsx'
 
 const NAV = [
   { label: 'Overview', to: '/', icon: LayoutDashboard },
-  { label: 'Corridas', to: '/processes', icon: ListChecks },
-  { label: 'Nueva corrida', to: '/processes/new', icon: Plus },
+  { label: 'Contabilidad', to: '/contabilidad', icon: BookOpen },
   { type: 'divider' },
   { label: 'Conexiones', to: '/sftp', icon: Server },
   { type: 'divider' },
-  { label: 'Warren AI', to: '/processes', icon: Bot, tag: 'AI' },
-  { label: 'Alertas', to: '/processes', icon: AlertTriangle, soon: true },
+  { label: 'Warren AI', to: '/contabilidad', icon: Bot, tag: 'AI' },
+  { label: 'Alertas', to: '/contabilidad', icon: AlertTriangle, soon: true },
 ]
 
 export default function Sidebar() {
@@ -88,7 +87,7 @@ export default function Sidebar() {
       {/* Bottom */}
       <div className="px-3 py-2 border-t border-stone-100">
         <NavLink
-          to="/processes"
+          to="/contabilidad"
           className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-stone-400 hover:bg-stone-50 hover:text-stone-600 transition-all"
         >
           <Settings size={18} strokeWidth={1.5} />

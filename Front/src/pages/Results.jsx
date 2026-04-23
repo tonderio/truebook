@@ -1004,7 +1004,7 @@ export default function Results() {
       <div className="flex items-center justify-between mb-1">
         <div>
           <div className="flex items-center gap-2 text-stone-400 text-sm mb-1">
-            <Link to="/processes" className="hover:text-stone-600">Corridas</Link>
+            <Link to="/contabilidad" className="hover:text-stone-600">Contabilidad</Link>
             <ChevronRight size={12} />
             <Link to={`/processes/${id}`} className="hover:text-stone-600">{proc?.name}</Link>
             <ChevronRight size={12} />

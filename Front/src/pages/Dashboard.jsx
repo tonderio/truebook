@@ -103,7 +103,7 @@ export default function Dashboard() {
             </span>
           </h1>
         </div>
-        <Link to="/processes/new" className="btn-primary flex items-center gap-2">
+        <Link to="/contabilidad" className="btn-primary flex items-center gap-2">
           <Plus size={14} />
           Nueva corrida
         </Link>
@@ -195,7 +195,7 @@ export default function Dashboard() {
             <p className="text-sm font-semibold text-stone-900">Corridas Recientes</p>
             <p className="text-xs text-stone-400 mt-0.5">Ultimas corridas de conciliacion</p>
           </div>
-          <Link to="/processes" className="text-[13px] text-stone-700 hover:text-blue-700 flex items-center gap-1 font-medium">
+          <Link to="/contabilidad" className="text-[13px] text-stone-700 hover:text-blue-700 flex items-center gap-1 font-medium">
             Ver todas <ArrowRight size={13} />
           </Link>
         </div>
@@ -207,7 +207,7 @@ export default function Dashboard() {
         ) : recent.length === 0 ? (
           <div className="text-center py-16">
             <p className="text-sm text-stone-400 mb-3">Sin corridas registradas</p>
-            <Link to="/processes/new" className="btn-primary inline-flex items-center gap-2 text-sm">
+            <Link to="/contabilidad" className="btn-primary inline-flex items-center gap-2 text-sm">
               <Plus size={14} /> Crear primera corrida
             </Link>
           </div>

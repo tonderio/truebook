@@ -158,7 +158,7 @@ export default function ProcessDetail() {
       <div className="flex items-start justify-between">
         <div>
           <div className="flex items-center gap-2 text-gray-500 text-sm mb-1">
-            <Link to="/processes" className="hover:text-gray-700">Proceso Contable</Link>
+            <Link to="/contabilidad" className="hover:text-gray-700">Contabilidad</Link>
             <ChevronRight size={12} />
             <span className="text-gray-900">{proc.name}</span>
           </div>
