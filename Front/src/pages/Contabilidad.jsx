@@ -282,8 +282,8 @@ export default function Contabilidad() {
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-2 mb-4">
-        <div className="relative flex-1 max-w-sm">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-2 mb-4">
+        <div className="relative flex-1 min-w-[220px] max-w-sm">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
           <input
             type="text"
@@ -298,19 +298,19 @@ export default function Contabilidad() {
           value={yearFilter}
           onChange={e => setYearFilter(e.target.value)}
           className="t-input"
-          style={{ height: 36, width: 'auto', minWidth: 100 }}
+          style={{ height: 36, width: 'auto', minWidth: 170, paddingRight: 36 }}
         >
           {years.map(y => (
             <option key={y} value={y}>{y === 'all' ? 'Todos los años' : y}</option>
           ))}
         </select>
-        <div className="flex items-center gap-0.5 bg-stone-100 rounded-lg p-0.5">
+        <div className="flex items-center gap-0.5 bg-stone-100 rounded-lg p-0.5 overflow-x-auto flex-shrink-0">
           {STATUS_FILTERS.map(f => (
             <button
               key={f.value}
               onClick={() => setStatusFilter(f.value)}
               className={clsx(
-                'px-3 py-1 rounded-md text-[12px] font-medium transition-all',
+                'px-3 py-1 rounded-md text-[12px] font-medium transition-all whitespace-nowrap',
                 statusFilter === f.value
                   ? 'bg-white text-stone-900 shadow-sm'
                   : 'text-stone-500 hover:text-stone-700'
