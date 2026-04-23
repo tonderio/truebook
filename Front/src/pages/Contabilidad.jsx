@@ -180,7 +180,20 @@ function NuevaCorridaModal({ open, onClose }) {
 
           {mutation.error && (
             <div className="text-[13px] text-red-700 bg-red-50 rounded-lg px-3 py-2 border border-red-100">
-              {mutation.error.response?.data?.detail || 'Error al crear la corrida'}
+              <div className="font-medium mb-0.5">Error al crear la corrida</div>
+              <div className="text-[12px] opacity-80">
+                {(() => {
+                  const err = mutation.error
+                  const detail = err.response?.data?.detail
+                  if (Array.isArray(detail)) {
+                    // FastAPI validation error array
+                    return detail.map((e, i) => `${e.loc?.join('.')}: ${e.msg}`).join(' · ')
+                  }
+                  if (typeof detail === 'string') return detail
+                  if (err.response?.status) return `HTTP ${err.response.status} ${err.response.statusText || ''} — ${err.message}`
+                  return err.message || 'Error desconocido'
+                })()}
+              </div>
             </div>
           )}
         </div>
