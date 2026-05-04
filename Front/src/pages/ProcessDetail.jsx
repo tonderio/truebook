@@ -57,17 +57,67 @@ function StageTimeline({ currentStage, progress, status }) {
   )
 }
 
+/**
+ * FileUpload — drag-and-drop / click-to-pick uploader.
+ *
+ * Tracks each file independently in `inFlight`:
+ *   { id, name, size, status: 'uploading'|'done'|'error', percent, error }
+ *
+ * UX flow per file:
+ *   user picks   → row appears with progress bar (0%)
+ *   uploading    → row shows percent + bytes
+ *   server 2xx   → row turns green ✓ for 2 seconds, then disappears
+ *                  (the file appears in the parent file list via query invalidation)
+ *   server error → row turns red with the error message + dismiss button
+ *
+ * Multiple files are uploaded in parallel; each gets its own row.
+ */
 function FileUpload({ processId, fileType, label }) {
   const qc = useQueryClient()
   const [dragging, setDragging] = useState(false)
+  const [inFlight, setInFlight] = useState([])
 
-  const upload = useMutation({
-    mutationFn: (file) => filesApi.upload(processId, fileType, file),
-    onSuccess: () => qc.invalidateQueries(['files', processId]),
-  })
+  const upload = useCallback(async (file) => {
+    const id = `${file.name}-${file.size}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+    const initial = {
+      id,
+      name: file.name,
+      size: file.size,
+      status: 'uploading',
+      percent: 0,
+      error: null,
+    }
+    setInFlight((prev) => [...prev, initial])
+
+    const updateRow = (patch) =>
+      setInFlight((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)))
+
+    try {
+      await filesApi.upload(processId, fileType, file, {
+        onProgress: (pct) => updateRow({ percent: pct }),
+      })
+      updateRow({ status: 'done', percent: 100 })
+      qc.invalidateQueries(['files', processId])
+      // Auto-clear successful rows after a couple seconds
+      setTimeout(() => {
+        setInFlight((prev) => prev.filter((r) => r.id !== id))
+      }, 2000)
+    } catch (err) {
+      const msg =
+        err?.response?.data?.detail ||
+        err?.response?.statusText ||
+        err?.message ||
+        'Error desconocido'
+      updateRow({ status: 'error', error: msg })
+    }
+  }, [processId, fileType, qc])
 
   const handleFiles = (files) => {
-    Array.from(files).forEach(f => upload.mutate(f))
+    Array.from(files).forEach((f) => upload(f))
+  }
+
+  const dismissRow = (id) => {
+    setInFlight((prev) => prev.filter((r) => r.id !== id))
   }
 
   return (
@@ -78,25 +128,80 @@ function FileUpload({ processId, fileType, label }) {
           'flex flex-col items-center justify-center h-24 border-2 border-dashed rounded-xl cursor-pointer transition-colors',
           dragging ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
         )}
-        onDragOver={e => { e.preventDefault(); setDragging(true) }}
+        onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
         onDragLeave={() => setDragging(false)}
-        onDrop={e => { e.preventDefault(); setDragging(false); handleFiles(e.dataTransfer.files) }}
+        onDrop={(e) => { e.preventDefault(); setDragging(false); handleFiles(e.dataTransfer.files) }}
       >
         <input
           type="file"
           className="hidden"
           multiple
           accept=".csv,.xlsx,.xls,.pdf"
-          onChange={e => handleFiles(e.target.files)}
+          onChange={(e) => handleFiles(e.target.files)}
         />
-        {upload.isPending
-          ? <Loader2 size={20} className="animate-spin text-gray-400" />
-          : <>
-              <Upload size={20} className="text-gray-400 mb-1" />
-              <p className="text-xs text-gray-500">Arrastra o haz clic · CSV, Excel, PDF</p>
-            </>
-        }
+        <Upload size={20} className="text-gray-400 mb-1" />
+        <p className="text-xs text-gray-500">Arrastra o haz clic · CSV, Excel, PDF</p>
       </label>
+
+      {/* Per-file in-flight rows: progress bar + name + size + status */}
+      {inFlight.length > 0 && (
+        <div className="mt-2 space-y-1">
+          {inFlight.map((row) => (
+            <div
+              key={row.id}
+              className={clsx(
+                'flex items-center gap-3 px-3 py-2 rounded-lg border text-sm',
+                row.status === 'done' && 'bg-emerald-50 border-emerald-200 text-emerald-800',
+                row.status === 'error' && 'bg-red-50 border-red-200 text-red-800',
+                row.status === 'uploading' && 'bg-blue-50 border-blue-200 text-blue-800'
+              )}
+            >
+              {row.status === 'uploading' && (
+                <Loader2 size={14} className="animate-spin shrink-0" />
+              )}
+              {row.status === 'done' && (
+                <CheckCircle2 size={14} className="shrink-0" />
+              )}
+              {row.status === 'error' && (
+                <AlertCircle size={14} className="shrink-0" />
+              )}
+
+              <div className="flex-1 min-w-0">
+                <p className="truncate font-medium">{row.name}</p>
+                {row.status === 'uploading' && (
+                  <>
+                    <div className="h-1 bg-blue-100 rounded mt-1 overflow-hidden">
+                      <div
+                        className="h-full bg-blue-500 transition-all"
+                        style={{ width: `${row.percent}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-blue-700 mt-0.5">
+                      {row.percent}% · {(row.size / 1024).toFixed(1)} KB
+                    </p>
+                  </>
+                )}
+                {row.status === 'done' && (
+                  <p className="text-xs">Subido — ahora puedes ejecutar el proceso</p>
+                )}
+                {row.status === 'error' && (
+                  <p className="text-xs">Error al subir: {row.error}</p>
+                )}
+              </div>
+
+              {row.status === 'error' && (
+                <button
+                  onClick={() => dismissRow(row.id)}
+                  className="text-red-400 hover:text-red-600 text-xs"
+                  title="Cerrar"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

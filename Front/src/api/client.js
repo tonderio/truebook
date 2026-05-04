@@ -65,11 +65,21 @@ export const processApi = {
 // ── Files ───────────────────────────────────────────────────────────────────
 export const filesApi = {
   list: (processId) => api.get(`/files/${processId}`),
-  upload: (processId, fileType, file) => {
+  upload: (processId, fileType, file, { onProgress } = {}) => {
     const form = new FormData()
     form.append('file_type', fileType)
     form.append('file', file)
-    return api.post(`/files/upload/${processId}`, form)
+    return api.post(`/files/upload/${processId}`, form, {
+      // axios calls this with a ProgressEvent {loaded, total}; convert to
+      // 0-100 percent (rounded) so the UI can show a clean number. When
+      // the server starts streaming the response the event keeps firing
+      // — only emit progress when total is a real number.
+      onUploadProgress: (e) => {
+        if (!onProgress || !e.total) return
+        const pct = Math.min(100, Math.round((e.loaded / e.total) * 100))
+        onProgress(pct)
+      },
+    })
   },
   delete: (fileId) => api.delete(`/files/${fileId}`),
 }
