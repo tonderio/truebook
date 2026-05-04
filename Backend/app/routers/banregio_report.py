@@ -24,6 +24,7 @@ from app.database import get_db
 from app.core.deps import get_current_user
 from app.models.user import User
 from app.models.process import AccountingProcess
+from app.models.classification import BanregioMovementClassification
 from app.config import settings
 from app.services.banregio_report_v2 import builder
 
@@ -55,6 +56,27 @@ def generate_v2_report(
             detail=(
                 f"Process must be in 'completed' or 'reconciled' status to "
                 f"generate the v2 report (current: {process.status})"
+            ),
+        )
+
+    # Defensive: a process can be in 'completed' status but have an empty
+    # BanregioMovementClassification table — happens if files were
+    # uploaded/parsed but the pipeline's auto_classify stage didn't run
+    # (interrupted run, manually-set status, partial re-run, etc.).
+    # Generating a v2 report in this state silently produces a 0%-coverage
+    # workbook which is misleading to FinOps. Fail fast with a clear hint.
+    cls_count = (
+        db.query(BanregioMovementClassification)
+        .filter_by(process_id=process_id)
+        .count()
+    )
+    if cls_count == 0:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Process has no Banregio classifications — pipeline did not "
+                "complete the auto-classify stage. Click 'Ejecutar proceso' "
+                "to run the full pipeline before generating the v2 report."
             ),
         )
 

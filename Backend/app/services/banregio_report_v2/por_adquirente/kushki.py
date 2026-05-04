@@ -36,6 +36,25 @@ SPANISH_MONTHS_LOWER = [
     "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
 ]
 
+# Three-letter month abbreviations used in cuadre row labels
+SPANISH_MONTHS_ABBREV = [
+    "ene", "feb", "mar", "abr", "may", "jun",
+    "jul", "ago", "sep", "oct", "nov", "dic",
+]
+
+
+def _last_day_label(period_year: int, period_month: int) -> str:
+    """'31-mar' / '30-abr' / '28-feb' — for the cuadre row text."""
+    import calendar
+    last = calendar.monthrange(period_year, period_month)[1]
+    return f"{last:02d}-{SPANISH_MONTHS_ABBREV[period_month - 1]}"
+
+
+def _next_first_day_label(period_year: int, period_month: int) -> str:
+    """'01-abr' for March, '01-may' for April, '01-ene' for December."""
+    nm = period_month + 1 if period_month < 12 else 1
+    return f"01-{SPANISH_MONTHS_ABBREV[nm - 1]}"
+
 
 def write(
     ws: Worksheet,
@@ -103,8 +122,9 @@ def write(
          f"✅ ${abs(diff_banco_vs_sr):,.2f}" if abs(diff_banco_vs_sr) <= 0.01
          else f"⚠ ${diff_banco_vs_sr:,.2f}"),
         (
-            "Depósito en tránsito (1-abr, txns 31-mar)" if period_month != 12
-            else "Depósito en tránsito (1-ene, txns 31-dic)",
+            f"Depósito en tránsito ("
+            f"{_next_first_day_label(period_year, period_month)}, "
+            f"txns {_last_day_label(period_year, period_month)})",
             sr_transit,
             "⚠️ Excluido — criterio caja" if sr_transit > 0 else "—"
         ),

@@ -31,7 +31,11 @@ def _normalize(text: str) -> str:
 CLABE_RULES: List[Tuple[str, Optional[str], List[str]]] = [
     # (classification, acquirer, [CLABE numbers])
     ("kushki_acquirer", "kushki", [
-        "014180655075635651",       # Kushki via Santander
+        "014180655075635651",       # Kushki via Santander (primary)
+        "014180655095204512",       # Kushki via Santander — IT Business Partners MX
+    ]),
+    ("stp_acquirer", "stp", [
+        "646180567300000006",       # STP via Banco STP
     ]),
     ("bitso_acquirer", "bitso", [
         "710969000046861948",       # Bitso via NVIO (own account receives)
@@ -83,8 +87,13 @@ KEYWORD_RULES: List[Tuple[str, Optional[str], List[str]]] = [
     ]),
     ("stp_acquirer", "stp", [
         # STP acquirer deposits are specific: STP + TRES COMAS + LIQUIDACION
-        # Be careful: STP also appears in settlement outbound movements
-        "LIQUIDACION",
+        # Be careful: STP also appears in settlement outbound movements.
+        # "LIQUIDACI" (prefix) catches both "LIQUIDACION" and the
+        # encoding-mangled "LIQUIDACI?N" some bank exports produce.
+        "LIQUIDACI",
+        # April pattern: STP-side "TRASPASO STP PROCESAMIENTO PENDIENTE"
+        # is an inbound STP deposit awaiting reconciliation.
+        "TRASPASO STP",
     ]),
 
     # ── Settlements to merchants (OUT) ─────────────────────────────────
@@ -123,6 +132,11 @@ KEYWORD_RULES: List[Tuple[str, Optional[str], List[str]]] = [
         "COMISION TRANSFERENCIA", "IVA DE COMISION TRANSFERENCIA",
         "COMISION BANCARIA", "COMISION BANREGIO",
         "COM. SPEI", "COM SPEI", "IVA SPEI", "IVA DE COM",
+        # Bank-side reversals — small refunds of a previously-charged
+        # SPEI commission or a returned SPEI. Treat as bank_expense
+        # (negative side) so they offset the original bank_expense.
+        "DEVOLUCION   COMISION", "DEVOLUCION COMISION", "DEVOLUCION   SPEI",
+        "DEVOLUCIÓN   COMISIÓN", "DEVOLUCIÓN COMISIÓN", "DEVOLUCIÓN   SPEI",
     ]),
 
     # Tax (before Investments — "ISR de Inversion" / "ISR Mesa Dinero" must match Tax)
@@ -178,7 +192,12 @@ def classify_movement(
                 return classification, acquirer, "auto"
 
     # ── TIER 2: Reference pattern matching ─────────────────────────────
-    if raw_ref and KUSHKI_REF_PATTERN.search(raw_ref):
+    # Some bank statement exports embed the reference inside the
+    # description column (e.g. "20260416400140BET0000475090830") instead
+    # of populating the dedicated reference column. Check both.
+    if (raw_ref and KUSHKI_REF_PATTERN.search(raw_ref)) or (
+        raw_desc and KUSHKI_REF_PATTERN.search(raw_desc)
+    ):
         return "kushki_acquirer", "kushki", "auto"
 
     # Settlement detection by dated reference pattern (058-DD/MM/YYYY)
