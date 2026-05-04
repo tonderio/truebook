@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { sftpApi } from '../api/client'
 import {
@@ -18,11 +18,28 @@ const ACQ_COLORS = {
 }
 
 function StatusCard({ acq, onTest, testing }) {
+  // result shape: { success, message?, error?, testedAt: number (ms) } | null
   const [result, setResult] = useState(null)
+
+  // Auto-clear successful test results after 8s (matches upload UX pattern).
+  // Errors stay until the user dismisses them or re-tests — they're
+  // actionable signals the operator needs to keep visible.
+  useEffect(() => {
+    if (!result || !result.success) return
+    const t = setTimeout(() => setResult(null), 8000)
+    return () => clearTimeout(t)
+  }, [result])
 
   function handleTest() {
     setResult(null)
-    onTest(acq.name, (res) => setResult(res))
+    onTest(acq.name, (res) => setResult({ ...res, testedAt: Date.now() }))
+  }
+
+  function fmtAt(ms) {
+    // Absolute time (HH:MM:SS) — stays accurate even if the message
+    // sits on screen for a while. Relative "hace Xs" goes stale unless
+    // we tick on an interval, which is overkill for this label.
+    return new Date(ms).toLocaleTimeString('es-MX', { hour12: false })
   }
 
   const statusConfig = acq.is_configured && acq.enabled
@@ -97,7 +114,7 @@ function StatusCard({ acq, onTest, testing }) {
         </p>
       )}
 
-      {/* Test result */}
+      {/* Test result — auto-fades on success (8s), persists with dismiss on error */}
       {result && (
         <div className={clsx(
           'rounded-md px-2.5 py-2 mb-3 text-[11px] leading-snug border',
@@ -109,7 +126,26 @@ function StatusCard({ acq, onTest, testing }) {
             {result.success
               ? <CheckCircle2 size={12} className="shrink-0 mt-0.5" />
               : <XCircle size={12} className="shrink-0 mt-0.5" />}
-            <span>{result.success ? result.message : result.error}</span>
+            <div className="flex-1 min-w-0">
+              <div>{result.success ? result.message : result.error}</div>
+              {result.testedAt && (
+                <div className={clsx(
+                  'text-[10px] mt-0.5',
+                  result.success ? 'text-emerald-600/70' : 'text-red-600/70',
+                )}>
+                  Probado a las {fmtAt(result.testedAt)}
+                </div>
+              )}
+            </div>
+            {!result.success && (
+              <button
+                onClick={() => setResult(null)}
+                className="text-red-400 hover:text-red-600 shrink-0"
+                title="Cerrar"
+              >
+                ✕
+              </button>
+            )}
           </div>
         </div>
       )}
