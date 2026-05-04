@@ -152,6 +152,91 @@ def run_process(
     return {"message": "Process started", "process_id": process_id}
 
 
+@router.post("/{process_id}/reclassify")
+def reclassify_process(
+    process_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Re-run only Stage 8 (auto-classify) against the existing
+    `BanregioResult.movements`.
+
+    Useful when:
+      - Stage 8 silently failed in a previous run
+      - Classifier rules were updated and we want to re-classify without
+        re-running the whole expensive pipeline (Mongo extraction,
+        Kushki SFTP download, FEES re-parse, conciliations, etc.)
+
+    Status policy:
+      - Allowed on any process status except 'running' (avoid race with
+        the live pipeline)
+      - Requires `BanregioResult` to exist with at least one movement
+    """
+    proc = db.query(AccountingProcess).filter(AccountingProcess.id == process_id).first()
+    if not proc:
+        raise HTTPException(status_code=404, detail="Process not found")
+    if proc.status == "running":
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot reclassify while pipeline is running — wait for it to finish",
+        )
+
+    br = db.query(BanregioResult).filter_by(process_id=process_id).first()
+    movements = (br.movements if br else None) or []
+    if not movements:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "No Banregio movements available to reclassify. Upload a "
+                "Banregio file and run the full pipeline first."
+            ),
+        )
+
+    _log(db, process_id, "classification",
+         f"Reclasificando {len(movements)} movimientos (manual trigger)...")
+    try:
+        classifications = auto_classify_all(movements)
+        # Idempotent: clear + re-insert
+        db.query(BanregioMovementClassification).filter(
+            BanregioMovementClassification.process_id == process_id
+        ).delete()
+        db.commit()
+        for cls_data in classifications:
+            db.add(BanregioMovementClassification(
+                process_id=process_id, **cls_data,
+            ))
+        db.commit()
+
+        coverage_stats = compute_coverage(classifications)
+        proc.coverage_pct = coverage_stats["coverage_pct"]
+        db.commit()
+        _log(
+            db, process_id, "classification",
+            f"Reclasificación completada: {coverage_stats['classified']}/"
+            f"{coverage_stats['total_movements']} ({coverage_stats['coverage_pct']}% "
+            f"cobertura). {coverage_stats['unclassified']} sin clasificar.",
+        )
+        return {
+            "message": "Reclassification complete",
+            "coverage_pct": coverage_stats["coverage_pct"],
+            "classified": coverage_stats["classified"],
+            "total_movements": coverage_stats["total_movements"],
+            "unclassified": coverage_stats["unclassified"],
+        }
+    except Exception as e:
+        logger.exception("Reclassify failed for process %d", process_id)
+        _log(db, process_id, "classification",
+             f"Reclasificación falló — {type(e).__name__}: {e}", "error")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        raise HTTPException(
+            status_code=500,
+            detail=f"{type(e).__name__}: {e}",
+        )
+
+
 @router.post("/{process_id}/reconcile")
 def reconcile_process(
     process_id: int,
@@ -665,10 +750,19 @@ def _run_full_process(process_id: int):
         # ── Stage 8: Auto-classify Banregio movements ──────────────────────
         _set_stage(db, proc, "classifying", 92)
         coverage_stats = None
-        if banregio_data and banregio_data.get("movements"):
+
+        # Defensive gate: read movements from BanregioResult (single source
+        # of truth in the DB), not the in-memory `banregio_data` variable
+        # — if Stage 6 partially succeeded but `banregio_data` got mutated
+        # to an empty list, we still want Stage 8 to run against whatever
+        # was committed to BanregioResult.
+        br_for_classify = db.query(BanregioResult).filter_by(process_id=process_id).first()
+        movements_to_classify = (br_for_classify.movements if br_for_classify else None) or []
+
+        if movements_to_classify:
             _log(db, process_id, "classification", "Auto-clasificando movimientos Banregio...")
             try:
-                classifications = auto_classify_all(banregio_data["movements"])
+                classifications = auto_classify_all(movements_to_classify)
 
                 # Clear previous classifications for idempotent re-runs
                 db.query(BanregioMovementClassification).filter(
@@ -693,7 +787,40 @@ def _run_full_process(process_id: int):
                     f"{coverage_stats['unclassified']} sin clasificar.",
                 )
             except Exception as e:
-                _log(db, process_id, "classification", f"Error en auto-clasificación: {e}", "warning")
+                # Promoted from "warning" to "error" so the failure is
+                # observable in (a) Railway logs via logger.exception
+                # and (b) ProcessLog with level=error so FinOps sees it
+                # in the UI. Also persist coverage_pct=0 explicitly so
+                # the v2 report endpoint's classification-count guard
+                # fires instead of silently emitting an empty report.
+                logger.exception(
+                    "Stage 8 auto_classify_all failed for process %d", process_id,
+                )
+                _log(
+                    db, process_id, "classification",
+                    f"FATAL: auto-clasificación falló — {type(e).__name__}: {e}",
+                    "error",
+                )
+                # Roll back any half-inserted classifications from this
+                # failed pass, then mark coverage as zero.
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
+                try:
+                    db.query(BanregioMovementClassification).filter(
+                        BanregioMovementClassification.process_id == process_id
+                    ).delete()
+                    proc.coverage_pct = 0
+                    db.commit()
+                except Exception:
+                    pass
+        else:
+            _log(
+                db, process_id, "classification",
+                "Saltando Stage 8 — no hay movimientos Banregio para clasificar",
+                "warning",
+            )
 
         # ── Stage 9: Generate alerts ───────────────────────────────────────
         _set_stage(db, proc, "alerting", 96)

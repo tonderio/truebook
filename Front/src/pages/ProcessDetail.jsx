@@ -144,6 +144,17 @@ export default function ProcessDetail() {
     onSuccess: () => qc.invalidateQueries(['files', id]),
   })
 
+  // Re-run only Stage 8 (auto-classify) — for cases where the pipeline
+  // completed with empty classifications or the classifier rules were
+  // updated and we want to re-classify without redoing everything.
+  const reclassifyMutation = useMutation({
+    mutationFn: () => processApi.reclassify(id),
+    onSuccess: () => {
+      qc.invalidateQueries(['process', id])
+      qc.invalidateQueries(['progress', id])
+    },
+  })
+
   // v2 Banregio Report download — POST returns the .xlsx as a Blob,
   // we convert to ObjectURL and trigger a download via a temp <a>.
   const reportV2Mutation = useMutation({
@@ -194,6 +205,22 @@ export default function ProcessDetail() {
         </div>
         <div className="flex items-center gap-3">
           <StatusBadge status={proc.status} />
+          {/* Re-classify: surface when run is completed but coverage < 100% —
+              useful after classifier rule updates or silent Stage 8 failures */}
+          {(proc.status === 'completed' || proc.status === 'reconciled') &&
+           (proc.coverage_pct == null || Number(proc.coverage_pct) < 100) && (
+            <button
+              onClick={() => reclassifyMutation.mutate()}
+              disabled={reclassifyMutation.isPending}
+              title="Re-ejecutar la clasificación automática contra los movimientos Banregio existentes"
+              className="btn-primary flex items-center gap-2"
+            >
+              {reclassifyMutation.isPending
+                ? <><Loader2 size={14} className="animate-spin" /> Reclasificando...</>
+                : <><CheckCircle2 size={14} /> Re-clasificar</>
+              }
+            </button>
+          )}
           {(proc.status === 'completed' || proc.status === 'reconciled') && (
             <>
               <Link to={`/processes/${id}/results`} className="btn-primary flex items-center gap-2">

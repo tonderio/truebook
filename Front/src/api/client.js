@@ -50,6 +50,10 @@ export const processApi = {
   reconcile: (id) => api.post(`/processes/${id}/reconcile`),
   unreconcile: (id) => api.post(`/processes/${id}/unreconcile`),
 
+  // Re-run only Stage 8 (auto-classify) without the full pipeline.
+  // Useful after classifier rules update OR after a silent Stage 8 failure.
+  reclassify: (id) => api.post(`/processes/${id}/reclassify`),
+
   // v2 Banregio Reconciliation Report — returns the .xlsx as a Blob.
   // Caller is expected to drive the download via createObjectURL + <a>.
   downloadBanregioReportV2: (id) =>
