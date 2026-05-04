@@ -52,14 +52,54 @@ def _find_header_row(raw: pd.DataFrame, max_scan: int = 20):
 def _parse_structured(content: bytes, filename: str) -> pd.DataFrame:
     fname = filename.lower()
     if fname.endswith(".csv"):
+        # Banregio's CSV export from the bank's online portal has a
+        # 9-row metadata preamble (account #, CLABE, address, RFC, ...)
+        # with 1–3 comma-separated fields per row, then a 7-field header
+        # at row 10. pandas's column-inference (any engine) trips on
+        # this — the C engine raises ParserError, the Python engine
+        # with on_bad_lines="skip" silently drops the 7-field rows.
+        #
+        # Phase 1 uses csv.reader directly (no column inference) just
+        # to find the header row. Phase 2 uses pd.read_csv with the
+        # detected header row, which makes the metadata preamble fall
+        # outside the data section so column counts line up cleanly.
+        import csv
+
+        # Decode tolerantly — try utf-8 first, fall back to latin-1
         try:
-            raw = pd.read_csv(io.BytesIO(content), encoding="utf-8", header=None)
-        except Exception:
-            raw = pd.read_csv(io.BytesIO(content), encoding="latin-1", header=None)
+            text = content.decode("utf-8")
+        except UnicodeDecodeError:
+            text = content.decode("latin-1", errors="replace")
+
+        rows = list(csv.reader(io.StringIO(text)))
+        if rows:
+            max_cols = max(len(r) for r in rows)
+            padded = [r + [None] * (max_cols - len(r)) for r in rows]
+            raw = pd.DataFrame(padded)
+        else:
+            raw = pd.DataFrame()
+
         header_row = _find_header_row(raw)
         if header_row is not None:
-            return pd.read_csv(io.BytesIO(content), encoding="utf-8", header=header_row)
-        return pd.read_csv(io.BytesIO(content), encoding="utf-8")
+            try:
+                return pd.read_csv(
+                    io.BytesIO(content),
+                    encoding="utf-8",
+                    header=header_row,
+                    engine="python",
+                )
+            except UnicodeDecodeError:
+                return pd.read_csv(
+                    io.BytesIO(content),
+                    encoding="latin-1",
+                    header=header_row,
+                    engine="python",
+                )
+
+        # No identifiable header — return the raw padded DataFrame as
+        # a last resort (parse_banregio's column-name lookup will fail
+        # gracefully and yield 0 movements rather than crashing).
+        return raw
     elif fname.endswith((".xlsx", ".xls")):
         # Scan all sheets for the best one with a valid header
         xls = pd.ExcelFile(io.BytesIO(content))
@@ -95,10 +135,22 @@ def parse_banregio(content: bytes, filename: str) -> Dict[str, Any]:
     Column H (index 7) = deposit amount for cross-check with Kushki col I.
     """
     fname = filename.lower()
-    if fname.endswith(".pdf"):
-        df = _parse_pdf(content)
-    else:
-        df = _parse_structured(content, filename)
+    try:
+        if fname.endswith(".pdf"):
+            df = _parse_pdf(content)
+        else:
+            df = _parse_structured(content, filename)
+    except Exception as e:
+        # Surface the actual underlying error + a peek at the file
+        # contents up the stack. Stage 6 catches this and writes it to
+        # ProcessLog so FinOps can see *why* a file landed as 'error'
+        # without needing to inspect the file by hand.
+        logger.exception("Banregio parser failed for %s", filename)
+        peek = content[:200].decode("utf-8", errors="replace") if content else "(empty)"
+        raise ValueError(
+            f"Banregio parser failed for {filename}: "
+            f"{type(e).__name__}: {e}. First 200 bytes: {peek!r}"
+        ) from e
 
     if df.empty:
         return {"movements": [], "summary": {}, "deposit_column": [], "row_count": 0}
