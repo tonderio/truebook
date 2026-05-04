@@ -255,10 +255,29 @@ def auto_classify_all(
     Returns:
         List of classification dicts ready for DB insertion.
     """
+    def _coerce_str(v) -> str:
+        """Coerce a movement field to a string for classifier consumption.
+
+        Some Banregio export formats only have 7 columns, so the parser's
+        `deposit_ref` falls back to the numeric credit amount (a float).
+        That float would crash unicodedata.normalize() inside
+        `classify_movement`. Numeric amounts aren't useful as references
+        anyway — the Kushki ref pattern needs a textual key like
+        '_YYYYMMDD400140BET…'. So we drop pure-numeric values entirely
+        and let the classifier fall back to description-only matching.
+        """
+        if v is None:
+            return ""
+        if isinstance(v, (int, float)):
+            return ""  # numeric — not a textual reference
+        return str(v).strip()
+
     results = []
     for idx, mov in enumerate(movements):
-        desc = mov.get("description", "")
-        ref = mov.get("deposit_ref", "") or mov.get("reference", "")
+        desc = _coerce_str(mov.get("description", ""))
+        # Prefer an explicit textual `reference` column if the parser
+        # extracts one; only fall back to deposit_ref if it's a string.
+        ref = _coerce_str(mov.get("reference") or mov.get("deposit_ref"))
         credit = mov.get("credit") or 0
         debit = mov.get("debit") or 0
         amount = credit if credit else -debit

@@ -169,14 +169,26 @@ def parse_banregio(content: bytes, filename: str) -> Dict[str, Any]:
     desc_col = next((col_norm[k] for k in ["descripcion", "concepto", "description"] if k in col_norm), None)
     debit_col = next((col_norm[k] for k in ["cargo", "cargos", "debito", "debit"] if k in col_norm), None)
     credit_col = next((col_norm[k] for k in ["abono", "abonos", "credito", "credit", "deposito"] if k in col_norm), None)
+    # Textual reference column — Banregio's online-portal CSV exposes a
+    # 'Referencia' column with values like '_20260401400140BET…' that
+    # the classifier's Tier-2 Kushki regex can match directly. The PDF
+    # / older Excel exports may not have this column; in that case we
+    # fall back to "" and rely on the description-side ref scan.
+    ref_col = next(
+        (col_norm[k] for k in ["referencia", "reference", "clave de rastreo", "clave rastreo"]
+         if k in col_norm),
+        None,
+    )
 
-    # Column H (index 7) is the deposit reference column per the spec
+    # Column H (index 7) is the numeric deposit reference column per the
+    # original spec (used for Kushki ↔ Banregio amount cross-check).
     deposit_col_name = df.columns[7] if len(df.columns) > 7 else credit_col
 
     movements = []
     for _, row in df.iterrows():
         date_val = str(row[date_col]).strip() if date_col and date_col in row.index else ""
         desc_val = str(row[desc_col]).strip() if desc_col and desc_col in row.index else ""
+        ref_val = str(row[ref_col]).strip() if ref_col and ref_col in row.index else ""
         debit_val = _clean_amount(row[debit_col]) if debit_col and debit_col in row.index else 0.0
         credit_val = _clean_amount(row[credit_col]) if credit_col and credit_col in row.index else 0.0
         dep_val = _clean_amount(row[deposit_col_name]) if deposit_col_name and deposit_col_name in row.index else 0.0
@@ -194,16 +206,19 @@ def parse_banregio(content: bytes, filename: str) -> Dict[str, Any]:
         if desc_val.upper().startswith("TOTAL"):
             continue
 
-        # Clean description of "nan"
+        # Clean description / reference of "nan" sentinels
         if desc_val.lower() in ("nan", "none"):
             desc_val = ""
+        if ref_val.lower() in ("nan", "none"):
+            ref_val = ""
 
         movements.append({
             "date": date_val,
             "description": desc_val,
+            "reference": ref_val,        # textual ref (e.g. '_20260401400140BET…')
             "debit": debit_val,
             "credit": credit_val,
-            "deposit_ref": dep_val,
+            "deposit_ref": dep_val,      # numeric — used for amount cross-check only
         })
 
     total_credits = sum(m["credit"] for m in movements)
