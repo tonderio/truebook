@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api/files", tags=["files"])
 @router.post("/upload/{process_id}")
 async def upload_file(
     process_id: int,
-    file_type: str = Form(...),  # kushki | banregio
+    file_type: str = Form(...),  # kushki | banregio | bitso | fees
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -25,8 +25,11 @@ async def upload_file(
     if not proc:
         raise HTTPException(status_code=404, detail="Process not found")
 
-    if file_type not in ("kushki", "banregio", "bitso"):
-        raise HTTPException(status_code=400, detail="file_type must be 'kushki', 'banregio', or 'bitso'")
+    if file_type not in ("kushki", "banregio", "bitso", "fees"):
+        raise HTTPException(
+            status_code=400,
+            detail="file_type must be 'kushki', 'banregio', 'bitso', or 'fees'",
+        )
 
     base_dir = os.path.abspath(settings.UPLOAD_DIR)
     upload_dir = os.path.join(base_dir, str(process_id))

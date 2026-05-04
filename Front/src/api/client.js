@@ -49,6 +49,13 @@ export const processApi = {
   delete: (id) => api.delete(`/processes/${id}`),
   reconcile: (id) => api.post(`/processes/${id}/reconcile`),
   unreconcile: (id) => api.post(`/processes/${id}/unreconcile`),
+
+  // v2 Banregio Reconciliation Report — returns the .xlsx as a Blob.
+  // Caller is expected to drive the download via createObjectURL + <a>.
+  downloadBanregioReportV2: (id) =>
+    api.post(`/processes/${id}/banregio-report-v2`, null, {
+      responseType: 'blob',
+    }),
 }
 
 // ── Files ───────────────────────────────────────────────────────────────────

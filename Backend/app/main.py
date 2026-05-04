@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 
 from app.routers import (
     auth, processes, files, results, classifications,
-    adjustments, alerts, bitso, warren, sftp,
+    adjustments, alerts, bitso, warren, sftp, banregio_report,
 )
 
 # ── Logging ────────────────────────────────────────────────────────────
@@ -69,6 +69,7 @@ app.include_router(alerts.router)
 app.include_router(bitso.router)
 app.include_router(warren.router)
 app.include_router(sftp.router)
+app.include_router(banregio_report.router)
 
 
 @app.get("/health")

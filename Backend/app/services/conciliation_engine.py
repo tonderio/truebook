@@ -77,8 +77,21 @@ def conciliate_kushki_daily(
     tolerance: float = DEFAULT_TOLERANCE,
 ) -> Dict[str, Any]:
     """
-    Validate Kushki daily summary:
-    gross - commission - rolling_reserve = net_deposit per day.
+    Validate Kushki daily summary against Kushki's own "Depósito Neto" formula.
+
+        net = gross
+            - commission          (Com. Kushki + IVA)
+            - rolling_reserve     (RR Retenido, net of release)
+            - rr_released         (separately, since release settles with the gross
+                                   then is withheld again by the engine via
+                                   rolling_reserve = retained - released)
+            + refund              (stored negative → reduces deposit)
+            + chargeback          (stored negative)
+            + void                (stored negative)
+            + manual_adj          (can be either sign)
+
+    All 8 columns are emitted by kushki_parser._MERGE_FIELDS; this function
+    simply nets them instead of throwing 5 away.
     """
     daily = kushki_result.get("daily_summary", [])
     matched = []
@@ -88,8 +101,18 @@ def conciliate_kushki_daily(
         gross = float(row.get("gross_amount", 0))
         commission = float(row.get("commission", 0))
         rolling = float(row.get("rolling_reserve", 0))
+        rr_released = float(row.get("rr_released", 0))
+        refund = float(row.get("refund", 0))
+        chargeback = float(row.get("chargeback", 0))
+        void = float(row.get("void", 0))
+        manual_adj = float(row.get("manual_adj", 0))
         net = float(row.get("net_deposit", 0))
-        computed_net = round(gross - commission - rolling, 6)
+
+        computed_net = round(
+            gross - commission - rolling - rr_released
+            + refund + chargeback + void + manual_adj,
+            6,
+        )
         diff = round(abs(computed_net - net), 6)
 
         entry = {
@@ -98,6 +121,11 @@ def conciliate_kushki_daily(
             "gross_amount": gross,
             "commission": commission,
             "rolling_reserve": rolling,
+            "rr_released": rr_released,
+            "refund": refund,
+            "chargeback": chargeback,
+            "void": void,
+            "manual_adj": manual_adj,
             "net_deposit": net,
             "computed_net": computed_net,
             "difference": diff,

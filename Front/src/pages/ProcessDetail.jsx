@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { processApi, filesApi } from '../api/client'
 import {
   Play, Upload, Loader2, CheckCircle2, AlertCircle, Info,
-  FileText, Trash2, ChevronRight, BarChart3,
+  FileText, Trash2, ChevronRight, BarChart3, FileSpreadsheet,
 } from 'lucide-react'
 import StatusBadge from '../components/ui/StatusBadge'
 import { format } from 'date-fns'
@@ -144,6 +144,30 @@ export default function ProcessDetail() {
     onSuccess: () => qc.invalidateQueries(['files', id]),
   })
 
+  // v2 Banregio Report download — POST returns the .xlsx as a Blob,
+  // we convert to ObjectURL and trigger a download via a temp <a>.
+  const reportV2Mutation = useMutation({
+    mutationFn: () => processApi.downloadBanregioReportV2(id),
+    onSuccess: (response) => {
+      const blob = response.data
+      // Try to read filename from Content-Disposition; fall back to a default
+      const disposition = response.headers?.['content-disposition'] || ''
+      const match = disposition.match(/filename="?([^"]+)"?/)
+      const filename = match
+        ? match[1]
+        : `RECONCILIACION_BANREGIO_${proc.period_year}_${String(proc.period_month).padStart(2, '0')}_v2.xlsx`
+
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+    },
+  })
+
   if (!proc) return (
     <div className="flex items-center justify-center h-full py-20">
       <Loader2 size={24} className="animate-spin text-gray-400" />
@@ -170,11 +194,24 @@ export default function ProcessDetail() {
         </div>
         <div className="flex items-center gap-3">
           <StatusBadge status={proc.status} />
-          {proc.status === 'completed' && (
-            <Link to={`/processes/${id}/results`} className="btn-primary flex items-center gap-2">
-              <BarChart3 size={14} />
-              Ver resultados
-            </Link>
+          {(proc.status === 'completed' || proc.status === 'reconciled') && (
+            <>
+              <Link to={`/processes/${id}/results`} className="btn-primary flex items-center gap-2">
+                <BarChart3 size={14} />
+                Ver resultados
+              </Link>
+              <button
+                onClick={() => reportV2Mutation.mutate()}
+                disabled={reportV2Mutation.isPending}
+                title="Descargar reporte de reconciliación Banregio v2 (.xlsx)"
+                className="btn-primary flex items-center gap-2"
+              >
+                {reportV2Mutation.isPending
+                  ? <><Loader2 size={14} className="animate-spin" /> Generando...</>
+                  : <><FileSpreadsheet size={14} /> Reporte v2</>
+                }
+              </button>
+            </>
           )}
           <button
             onClick={() => runMutation.mutate()}

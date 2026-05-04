@@ -20,6 +20,9 @@ Front/dist/
 # Uploads
 Backend/uploads/
 
+# Generated reports (regenerated per run via scripts/generate_banregio_report.py)
+docs/audits/*.xlsx
+
 # IDE
 .claude/
 .vscode/

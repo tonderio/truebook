@@ -82,6 +82,31 @@ def _norm_text(value: Any) -> str:
     return s
 
 
+_AGGREGATE_DATE_PREFIXES = ("total", "subtotal", "suma", "gran total", "promedio")
+_MONTH_NAMES = {
+    "enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+}
+
+
+def _is_aggregate_date(value: Any) -> bool:
+    """
+    True if a `date` column value is actually an aggregate row (e.g. the
+    `TOTAL MARZO 2026` summary row that Kushki appends at the bottom of the
+    Resumen Diario sheet). These rows pass the empty-string filter but must
+    not be treated as settlement days.
+    """
+    n = _norm_text(value)
+    if not n:
+        return True
+    if any(n.startswith(p) for p in _AGGREGATE_DATE_PREFIXES):
+        return True
+    tokens = n.split()
+    if tokens and tokens[0] in _MONTH_NAMES:
+        return True
+    return False
+
+
 def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     rename = {}
     for col in df.columns:
@@ -242,6 +267,9 @@ def parse_kushki(content: bytes, filename: str) -> Dict[str, Any]:
     # String normalize date column.
     df["date"] = df["date"].astype(str).str.strip()
     df = df[df["date"] != ""]
+    # Drop aggregate/summary rows (e.g. "TOTAL MARZO 2026") so they don't
+    # become a phantom settlement day in daily_summary.
+    df = df[~df["date"].apply(_is_aggregate_date)]
     if df.empty:
         return {
             "daily_summary": [],
@@ -276,6 +304,11 @@ def parse_kushki(content: bytes, filename: str) -> Dict[str, Any]:
 
     if mdf is not None and "merchant_name" in mdf.columns:
         mdf = mdf.copy()
+        # Drop aggregate/summary rows (same concern as the daily sheet).
+        if "date" in mdf.columns:
+            mdf = mdf[~mdf["date"].astype(str).apply(_is_aggregate_date)]
+        # Drop rows where merchant_name itself is an aggregate label.
+        mdf = mdf[~mdf["merchant_name"].astype(str).apply(_is_aggregate_date)]
         for col in ALL_NUM_FIELDS:
             if col not in mdf.columns:
                 mdf[col] = 0.0
