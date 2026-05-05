@@ -1,11 +1,40 @@
 import io
 from collections import defaultdict
 from datetime import date, datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
+
+# Canonical "Concepto" labels per acquirer, matching the FEES gold file
+# (FEES_ABRIL_2026). Keep keys lowercase — they're the canonical acquirer
+# codes used everywhere else in the pipeline (mongo_extractor, classifier,
+# fees_file_parser). Falls back to "{acquirer}-Operativa" for unknown
+# acquirers so we never drop a row silently.
+ACQUIRER_CONCEPTO = {
+    "bitso":       "BITSO - SPEI",
+    "kushki":      "Kushki - Tarjetas",
+    "oxxopay":     "OXXOPay",
+    "stp":         "STP - SPEI",
+    "mercadopago": "Mercado Pago",
+    "safetypay":   "SafetyPay",
+    "unlimit":     "Unlimit - Tarjetas",
+}
+
+
+def _concepto_for(acquirer: str) -> str:
+    """Map an acquirer code to its canonical Concepto label for the FEES file.
+    Falls back to a synthetic label so unknown acquirers still appear (with
+    a recognizable shape) rather than silently dropping rows."""
+    if not acquirer:
+        return "Operativa"
+    key = str(acquirer).strip().lower()
+    return ACQUIRER_CONCEPTO.get(key, f"{acquirer}-Operativa")
 
 MONTHS_ES_UPPER = [
     "ENERO",
@@ -105,7 +134,22 @@ def _extract_fees_components(fees_result) -> Dict[str, Any]:
     }
 
 
-def build_fees_export(process, fees_result) -> Tuple[str, bytes]:
+def build_fees_export(
+    process,
+    fees_result,
+    *,
+    db: "Optional[Session]" = None,
+) -> Tuple[str, bytes]:
+    """Build the canonical 4-sheet FEES xlsx (Detalle, Resumen, Razon Social,
+    Diario) from a `FeesResult` row.
+
+    When `db` is provided, Sheet 3 ("Resumen por Razon Social") groups
+    merchants by their configured legal entity (see
+    banregio_report_config.razon_social_for). When `db` is None, falls
+    back to the historical placeholder (one razon-social row per merchant)
+    so existing callers (the manual download endpoint at
+    routers/results.py:export_fees_excel) keep working unchanged.
+    """
     period_text = f"{_month_name_upper(process.period_month)} {process.period_year}"
     components = _extract_fees_components(fees_result)
     merchant_summary = components["merchant_summary"]
@@ -150,8 +194,13 @@ def build_fees_export(process, fees_result) -> Tuple[str, bytes]:
     for row in daily_breakdown:
         merchant_id = _safe_str(row.get("merchant_id"), "unknown")
         merchant_name = _safe_str(row.get("merchant_name"), merchant_id)
-        acquirer = _safe_str(row.get("acquirer"), "Operativa")
-        key = (merchant_id, merchant_name, f"{acquirer} - Operativa", acquirer)
+        acquirer = _safe_str(row.get("acquirer"), "")
+        # Use canonical Concepto labels (matches FEES gold) instead of
+        # the legacy "{acquirer}-Operativa" form. Keeps the parser
+        # happy (it keys on `adquirente`, not `concepto`) while making
+        # the file readable for FinOps.
+        concepto = _concepto_for(acquirer)
+        key = (merchant_id, merchant_name, concepto, acquirer)
         grouped_tx[key]["events"] += 1
         grouped_tx[key]["amount"] += _num(row.get("amount"))
         grouped_tx[key]["fee"] += _num(row.get("fee_amount"))
@@ -166,6 +215,17 @@ def build_fees_export(process, fees_result) -> Tuple[str, bytes]:
     for mid in sorted(all_merchants, key=lambda x: merchant_name_map.get(x, x)):
         merchant_name = merchant_name_map.get(mid, mid)
         ws_detail.append([None, merchant_name])
+
+        # Running subtotal accumulators per merchant. Includes
+        # transaction rows + withdrawal + autorefund rows so the subtotal
+        # reflects everything that just appeared above it (matches gold's
+        # "Subtotal {merchant}" pattern in FEES_ABRIL_2026.xlsx).
+        sub_events = 0
+        sub_amount = 0.0
+        sub_fee = 0.0
+        sub_iva = 0.0
+        sub_total_civa = 0.0
+        sub_neto = 0.0
 
         for (g_mid, _m_name, concept, acquirer), val in sorted(grouped_tx.items(), key=lambda x: (x[0][1], x[0][2])):
             if g_mid != mid:
@@ -190,18 +250,25 @@ def build_fees_export(process, fees_result) -> Tuple[str, bytes]:
                 total_c_iva,
                 neto,
             ])
+            sub_events += val["events"]
+            sub_amount += amount
+            sub_fee += total_fee
+            sub_iva += iva
+            sub_total_civa += total_c_iva
+            sub_neto += neto
 
         if mid in w_map:
             w = w_map[mid]
             total_fee = round(_num(w.get("total_fee")), 6)
             amount = round(_num(w.get("total_amount")), 6)
             iva = round(total_fee * 0.16, 6)
+            count = int(_num(w.get("count")))
             ws_detail.append([
                 None,
                 None,
                 "Withdrawals",
                 "N/A",
-                int(_num(w.get("count"))),
+                count,
                 amount if amount else "—",
                 round((total_fee / amount) if amount else 0.0, 6),
                 0.0,
@@ -210,18 +277,27 @@ def build_fees_export(process, fees_result) -> Tuple[str, bytes]:
                 round(total_fee + iva, 6),
                 "—",
             ])
+            # Withdrawals contribute to fee subtotal but not to monto-procesado /
+            # neto (which represent gross processed flow). This mirrors the
+            # gold file where Withdrawals subtotals into "Total Fee s/IVA"
+            # but leaves Monto Procesado/Neto cells dashed.
+            sub_events += count
+            sub_fee += total_fee
+            sub_iva += iva
+            sub_total_civa += round(total_fee + iva, 6)
 
         if mid in r_map:
             r = r_map[mid]
             total_fee = round(_num(r.get("total_fee")), 6)
             amount = round(_num(r.get("total_amount")), 6)
             iva = round(total_fee * 0.16, 6)
+            count = int(_num(r.get("count")))
             ws_detail.append([
                 None,
                 None,
                 "Autorefunds/Refunds",
                 "N/A",
-                int(_num(r.get("count"))),
+                count,
                 amount if amount else "—",
                 round((total_fee / amount) if amount else 0.0, 6),
                 0.0,
@@ -230,6 +306,32 @@ def build_fees_export(process, fees_result) -> Tuple[str, bytes]:
                 round(total_fee + iva, 6),
                 "—",
             ])
+            sub_events += count
+            sub_fee += total_fee
+            sub_iva += iva
+            sub_total_civa += round(total_fee + iva, 6)
+
+        # Subtotal row — matches FEES gold pattern. Bolded so FinOps can
+        # eyeball it. Numbers carry 2-decimal precision in display, full
+        # precision under the hood (openpyxl will show whatever Excel
+        # rounds to with default cell formatting).
+        subtotal_row_idx = ws_detail.max_row + 1
+        ws_detail.append([
+            None,
+            f"Subtotal {merchant_name}",
+            0,
+            0,
+            sub_events,
+            round(sub_amount, 6),
+            0,
+            0,
+            round(sub_fee, 6),
+            round(sub_iva, 6),
+            round(sub_total_civa, 6),
+            round(sub_neto, 6),
+        ])
+        for col in range(1, 13):
+            ws_detail.cell(row=subtotal_row_idx, column=col).font = Font(bold=True)
 
     # ---- Resumen por Merchant ----
     ws_summary["A2"] = f"RESUMEN DE FEES POR MERCHANT — {period_text}"
@@ -300,8 +402,16 @@ def build_fees_export(process, fees_result) -> Tuple[str, bytes]:
         ])
 
     # ---- Resumen por Razon Social ----
+    # When `db` is provided, use the configured merchant→razon-social map
+    # (banregio_report_config.razon_social_for) to actually group merchants
+    # by legal entity. When `db` is None (e.g. the manual download endpoint
+    # at routers/results.py), fall back to the legacy per-merchant
+    # placeholder so behavior is unchanged for existing callers.
     ws_razon["A2"] = f"RESUMEN DE FEES POR RAZON SOCIAL — {period_text}"
-    ws_razon["A3"] = "Montos en MXN  |  Consolidado por razón social (placeholder por merchant)"
+    if db is not None:
+        ws_razon["A3"] = "Montos en MXN  |  Consolidado por razón social"
+    else:
+        ws_razon["A3"] = "Montos en MXN  |  Consolidado por razón social (placeholder por merchant)"
     ws_razon.append([])
     razon_headers = [
         "",
@@ -321,24 +431,85 @@ def build_fees_export(process, fees_result) -> Tuple[str, bytes]:
     ws_razon.append(razon_headers)
     _styled_header_row(ws_razon, ws_razon.max_row, 1, len(razon_headers))
 
-    for row in ws_summary.iter_rows(min_row=6, values_only=True):
-        if not row or not row[1]:
-            continue
-        ws_razon.append([
-            None,
-            row[1],  # Razon Social (sin catálogo aún)
-            row[1],  # Merchants
-            row[2],
-            row[3],
-            row[4],
-            row[5],
-            row[6],
-            row[8],
-            row[9],
-            row[10],
-            row[11],
-            row[12],
-        ])
+    if db is not None:
+        # Lazy import to avoid circular dep at module load time.
+        from app.services import banregio_report_config as cfg
+        razon_lookup = lambda name: cfg.razon_social_for(db, name)
+
+        # Group ws_summary rows by razon social, summing all numeric columns
+        # and joining merchant names with ", ". Unmapped merchants get their
+        # own name as razon social (one-row group) — same as the placeholder
+        # behavior, just per-merchant rather than for every row.
+        groups: dict[str, dict[str, Any]] = defaultdict(lambda: {
+            "merchants": [],
+            "monto_procesado": 0.0,
+            "fees_transacc": 0.0,
+            "other_fees": 0.0,
+            "settlement": 0.0,
+            "withdrawals": 0.0,
+            "autorefunds": 0.0,
+            "routing": 0.0,
+            "total_s_iva": 0.0,
+            "iva": 0.0,
+            "total_c_iva": 0.0,
+            "neto": 0.0,
+        })
+        for row in ws_summary.iter_rows(min_row=6, values_only=True):
+            if not row or not row[1]:
+                continue
+            merchant_name = str(row[1])
+            rs = razon_lookup(merchant_name)
+            g = groups[rs]
+            g["merchants"].append(merchant_name)
+            g["monto_procesado"] += _num(row[2])
+            g["fees_transacc"] += _num(row[3])
+            g["other_fees"] += _num(row[4])
+            g["settlement"] += _num(row[5])
+            g["withdrawals"] += _num(row[6])
+            g["autorefunds"] += _num(row[7])
+            g["routing"] += _num(row[8])
+            g["total_s_iva"] += _num(row[9])
+            g["iva"] += _num(row[10])
+            g["total_c_iva"] += _num(row[11])
+            g["neto"] += _num(row[12])
+
+        for rs in sorted(groups.keys()):
+            g = groups[rs]
+            ws_razon.append([
+                None,
+                rs,
+                ", ".join(g["merchants"]),
+                round(g["monto_procesado"], 6) or "",
+                round(g["fees_transacc"], 6) or "",
+                round(g["other_fees"], 6) or "",
+                round(g["settlement"], 6) or "",
+                round(g["withdrawals"], 6) or "",
+                round(g["routing"], 6) or "",
+                round(g["total_s_iva"], 6) or "",
+                round(g["iva"], 6) or "",
+                round(g["total_c_iva"], 6) or "",
+                round(g["neto"], 6) or "",
+            ])
+    else:
+        # Legacy placeholder path (one row per merchant).
+        for row in ws_summary.iter_rows(min_row=6, values_only=True):
+            if not row or not row[1]:
+                continue
+            ws_razon.append([
+                None,
+                row[1],  # Razon Social (sin catálogo aún)
+                row[1],  # Merchants
+                row[2],
+                row[3],
+                row[4],
+                row[5],
+                row[6],
+                row[8],
+                row[9],
+                row[10],
+                row[11],
+                row[12],
+            ])
 
     # ---- Desglose diario ----
     ws_daily["A1"] = (
@@ -362,8 +533,10 @@ def build_fees_export(process, fees_result) -> Tuple[str, bytes]:
     for row in daily_breakdown:
         d = _date_label(row.get("date"))
         merchant = _safe_str(row.get("merchant_name"), _safe_str(row.get("merchant_id"), "unknown"))
-        acquirer = _safe_str(row.get("acquirer"), "Operativa")
-        concept = f"{acquirer}-Operativa"
+        acquirer = _safe_str(row.get("acquirer"), "")
+        # Use canonical Concepto labels (matches FEES gold) instead of
+        # the legacy "{acquirer}-Operativa" form. Same mapping as Sheet 1.
+        concept = _concepto_for(acquirer)
         key = (d, merchant, concept)
         daily_grouped[key]["events"] += 1
         daily_grouped[key]["amount"] += _num(row.get("amount"))

@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
@@ -17,6 +18,7 @@ from app.schemas.process import ProcessCreate, ProcessOut, ProcessProgress, Proc
 from app.services import mongo_extractor, fees_processor, conciliation_engine, kushki_sftp
 from app.services.auto_classifier import auto_classify_all, compute_coverage
 from app.services import alert_engine
+from app.services.excel_exports import build_fees_export
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/processes", tags=["processes"])
@@ -498,6 +500,86 @@ def _run_full_process(process_id: int):
             total_fees=fees_data["total_fees"],
         ))
         db.commit()
+
+        # ── Stage 4b: Auto-generate FEES xlsx from FeesResult ───────────────
+        # Goal: every pipeline run produces a FEES_{MES}_{YEAR}_FINAL.xlsx
+        # sourced from `mv_payment_transactions` and registers it as an
+        # `UploadedFile(file_type='fees', status='auto_generated')` so the
+        # v2 Banregio Reconciliation Report consumes it without requiring
+        # FinOps to upload anything manually. Manually-uploaded FEES files
+        # (status='uploaded') ALWAYS win — we never overwrite them. This
+        # stage is non-fatal; failures fall through and the v2 report's
+        # FEES_FILE_MISSING alert handles the missing case as before.
+        _set_stage(db, proc, "generating_fees_xlsx", 55)
+        _log(db, process_id, "fees", "Generando FEES auto desde mv_payment_transactions...")
+        try:
+            fees_row = (
+                db.query(FeesResult)
+                .filter(FeesResult.process_id == process_id)
+                .first()
+            )
+
+            # Idempotent re-runs: drop any previous AUTO-generated FEES file
+            # (matched by stored_path containing "fees_auto_"). Manual
+            # uploads (different filename pattern) are left alone.
+            auto_marker = "fees_auto_"
+            previous_auto = (
+                db.query(UploadedFile)
+                .filter(
+                    UploadedFile.process_id == process_id,
+                    UploadedFile.file_type == "fees",
+                    UploadedFile.stored_path.like(f"%{auto_marker}%"),
+                )
+                .all()
+            )
+            for rec in previous_auto:
+                try:
+                    if os.path.exists(rec.stored_path):
+                        os.remove(rec.stored_path)
+                except Exception:
+                    pass
+                db.delete(rec)
+            if previous_auto:
+                db.commit()
+
+            # Manual upload wins. Skip auto-gen if FinOps already uploaded one.
+            existing_manual = (
+                db.query(UploadedFile)
+                .filter_by(process_id=process_id, file_type="fees")
+                .first()
+            )
+            if existing_manual is not None:
+                _log(
+                    db, process_id, "fees",
+                    f"FEES manual ya existe ({existing_manual.original_name}) — auto-gen omitido (manual gana)"
+                )
+            else:
+                filename, content = build_fees_export(proc, fees_row, db=db)
+                upload_dir = os.path.join(os.path.abspath(settings.UPLOAD_DIR), str(process_id))
+                os.makedirs(upload_dir, exist_ok=True)
+                stored_name = f"fees_auto_{int(time.time())}.xlsx"
+                stored_path = os.path.join(upload_dir, stored_name)
+                with open(stored_path, "wb") as f:
+                    f.write(content)
+                db.add(UploadedFile(
+                    process_id=process_id,
+                    file_type="fees",
+                    original_name=filename,
+                    stored_path=stored_path,
+                    file_size=len(content),
+                    status="auto_generated",
+                ))
+                db.commit()
+                _log(
+                    db, process_id, "fees",
+                    f"FEES auto-generado: {filename} ({len(content):,} bytes)"
+                )
+        except Exception as e:
+            _log(
+                db, process_id, "fees",
+                f"Error auto-generando FEES (no-fatal, v2 caerá en FEES_FILE_MISSING): {e}",
+                "warning",
+            )
 
         # ── Stage 5: Ingest + Parse Kushki files ────────────────────────────
         _set_stage(db, proc, "parsing_kushki", 65)

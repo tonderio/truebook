@@ -69,6 +69,53 @@ DEFAULTS: dict[str, tuple[Any, str]] = {
     "currency": ("MXN", "Reporting currency."),
     "iva_rate": (0.16, "IVA tax rate applied to fees."),
     "timezone": ("UTC-6", "Operating timezone for cash-basis criterion."),
+
+    # Merchant → Razón Social (legal entity) mapping. Drives Sheet 3
+    # ("Resumen por Razon Social") in the auto-generated FEES file
+    # (see app/services/excel_exports.py:build_fees_export). Seeded
+    # from FEES_ABRIL_2026 gold; FinOps-editable as merchants are added.
+    # Unmapped merchants fall back to using their own name as the
+    # razon social (preserves the historical placeholder behavior).
+    "merchant_razon_social_map": (
+        {
+            "AFUNVIP":               "KODEMAX GLOBAL SA DE CV",
+            "Afun Mexico":           "KODEMAX GLOBAL SA DE CV",
+            "Strendus":              "IMPULSORA 2022 SA DE CV",
+            "Strendus VIP":          "IMPULSORA 2022 SA DE CV",
+            "Idem Club":             "PB PAYMENTS BAKERY MEXICO SA DE CV",
+            "BCGAME":                "PUBLIPLAY MEXICO SA DE CV",
+            "CampoBet":              "PESIX S.A. DE C.V.",
+            "Fun MX":                "SOARING EAGLE SA DE CV",
+            "Betcris":               "PARADISE RIVIERA GAMING SA DE CV",
+            "Betcris VIP":           "PARADISE RIVIERA GAMING SA DE CV",
+            "Vitau":                 "VITAU MEDICAL SAPI DE CV",
+            "Stadiobet":             "STADIOBET S.A. DE C.V.",
+            "Artilu MX":             "ARTILU SA",
+            "Kashio":                "ORIGINAL WEB MEXICO SA DE CV",
+            "Big Bola":              "OPERADORA BIG SKY DE MEXICO SA DE CV",
+            "Estadio Gana":          "PIRMIN SA DE CV",
+            "elevo":                 "COMUNIRED SA DE CV",
+            "Hard Rock":             "CESTA-PUNTA DEPORTES SA DE CV",
+            "Brazino 777":           "FIESTA FORTUNES SA DE CV",
+            "Grand Leon":            "BEXAR GESTION DE NEGOCIOS SA DE CV",
+            "Hollywood Const":       "BEXAR GESTION DE NEGOCIOS SA DE CV",
+            "Hollywood Valle Alto":  "BEXAR GESTION DE NEGOCIOS SA DE CV",
+            "Vivento Apodaca":       "ALAMO VALOR E INSUMOS S DE RL DE CV",
+            "Viva Mex":              "ALAMO VALOR E INSUMOS S DE RL DE CV",
+            "Vivento 4 Rios":        "ALAMO VALOR E INSUMOS S DE RL DE CV",
+            "Jubilee Mty":           "OBSIDIANA VALOR E INSUMOS S DE RL DE CV",
+            "Jubilee Grand Casino":  "OBSIDIANA VALOR E INSUMOS S DE RL DE CV",
+            "Golden Island":         "OBSIDIANA VALOR E INSUMOS S DE RL DE CV",
+            "Vivento Zapopan":       "GESTION DE VALORES ONIX S DE RL DE CV",
+            "Jubilee Cancun":        "GESTION DE VALORES ONIX S DE RL DE CV",
+            "Tajmahal":              "GESTION DE VALORES ONIX S DE RL DE CV",
+            "Buspay":                "MEX BUSPAY SA DE CV",
+            "Molino Viejo":          "MOLINO VIEJO SA DE CV",
+        },
+        "Maps merchant_name → razon social (legal entity). Drives Sheet 3 "
+        "grouping in the auto-generated FEES file. FinOps-editable; "
+        "unmapped merchants fall back to their own name.",
+    ),
 }
 
 
@@ -177,6 +224,23 @@ def umbral_alerta_grande(db: Session) -> float:
 def pending_transfer_merchants(db: Session) -> list[dict]:
     """List of {merchant, amount, source, note} entries flagged by FinOps."""
     return list(get(db, "pending_transfer_merchants"))
+
+
+def merchant_razon_social_map(db: Session) -> dict[str, str]:
+    """Merchant name → razon social (legal entity) mapping."""
+    raw = get(db, "merchant_razon_social_map") or {}
+    # Defensive: allow callers to pass arbitrary key types from misconfigured
+    # rows; coerce to str so .get() lookups behave.
+    return {str(k): str(v) for k, v in raw.items()}
+
+
+def razon_social_for(db: Session, merchant_name: str) -> str:
+    """Look up the razon social for a merchant; falls back to the merchant
+    name itself if unmapped (preserves the historical placeholder behavior
+    so reports are never blank in the Razon Social column)."""
+    if not merchant_name:
+        return ""
+    return merchant_razon_social_map(db).get(merchant_name, merchant_name)
 
 
 def is_pending_transfer(db: Session, merchant_name: str, source: str | None = None) -> bool:

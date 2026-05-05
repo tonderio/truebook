@@ -16,6 +16,7 @@ const STAGES = [
   { key: 'extracting_withdrawals',  label: 'Extrayendo retiros' },
   { key: 'extracting_refunds',      label: 'Extrayendo reembolsos' },
   { key: 'processing_fees',         label: 'Procesando comisiones' },
+  { key: 'generating_fees_xlsx',    label: 'Generando FEES (auto)' },
   { key: 'parsing_kushki',          label: 'Parseando Kushki' },
   { key: 'parsing_banregio',        label: 'Parseando Banregio' },
   { key: 'conciliating',            label: 'Conciliando' },
@@ -294,17 +295,19 @@ export default function ProcessDetail() {
 
   // FEES file presence — derived from the already-loaded files query.
   // Used to surface a banner + drive the in-card FEES upload zone.
-  // The banner only shows when:
-  //   - the run finished (status completed/reconciled)
-  //   - classifications were populated (coverage_pct >= 100% — i.e. the
-  //     pipeline ran cleanly and the OXXOPay/STP/Bitso net values
-  //     would be the missing piece if a FEES file were available)
-  //   - no FEES file is uploaded yet
-  const hasFeesFile = (files || []).some((f) => f.file_type === 'fees')
+  // Three banner states:
+  //   1. NO FEES file at all  → amber "pendiente" banner (manual upload nudge)
+  //   2. ONLY auto-generated  → green "auto" banner (informational, "you can override")
+  //   3. Manual upload exists → no banner (current behavior)
+  const feesFiles = (files || []).filter((f) => f.file_type === 'fees')
+  const hasFeesFile = feesFiles.length > 0
+  const hasManualFees = feesFiles.some((f) => f.status !== 'auto_generated')
+  const onlyAutoFees = hasFeesFile && !hasManualFees
   const ranSuccessfully =
     (proc.status === 'completed' || proc.status === 'reconciled') &&
     (proc.coverage_pct ?? 0) >= 100
   const showFeesPendingBanner = ranSuccessfully && !hasFeesFile
+  const showFeesAutoBanner = ranSuccessfully && onlyAutoFees
 
   // Spanish month name for the suggested filename in the banner copy
   const SPANISH_MONTHS = [
@@ -383,7 +386,10 @@ export default function ProcessDetail() {
       {/* FEES file pendiente — informational banner that nudges the
           operator to upload FEES_{MES}_{AÑO}_FINAL.xlsx so the v2 report's
           OXXOPay / STP / Bitso "Neto a Liquidar" columns get real numbers
-          (otherwise they show as $0 and the resumen total looks off). */}
+          (otherwise they show as $0 and the resumen total looks off).
+          Only shown when there's NO FEES file at all — the auto-generation
+          step in the pipeline (Stage 4b) usually fills this in, so this
+          path mostly fires when auto-gen failed (warning logged in stage). */}
       {showFeesPendingBanner && (
         <div className="card border border-amber-200 bg-amber-50 flex items-start gap-3">
           <Info size={18} className="text-amber-700 shrink-0 mt-0.5" />
@@ -398,6 +404,28 @@ export default function ProcessDetail() {
               en la zona de carga abajo. Una vez subido, haz clic en{' '}
               <span className="font-medium">Re-clasificar</span> y luego en{' '}
               <span className="font-medium">Reporte v2</span> para regenerar.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* FEES auto-generado — informational banner showing the pipeline
+          produced a FEES file directly from mv_payment_transactions. FinOps
+          can leave it as-is, or upload a refined manual file (which wins
+          and replaces the auto file as the source of truth for v2). */}
+      {showFeesAutoBanner && (
+        <div className="card border border-emerald-200 bg-emerald-50 flex items-start gap-3">
+          <CheckCircle2 size={18} className="text-emerald-700 shrink-0 mt-0.5" />
+          <div className="flex-1 text-sm">
+            <p className="font-medium text-emerald-900 mb-0.5">
+              FEES auto-generado desde mv_payment_transactions
+            </p>
+            <p className="text-emerald-800 leading-snug">
+              TrueBook generó <code className="bg-emerald-100 px-1 rounded text-[12px]">{expectedFeesFilename}</code>{' '}
+              automáticamente desde las transacciones de Mongo. Si necesitas ajustar
+              <span className="font-medium"> Other Fees / Settlement / Routing</span> u otras filas
+              que el pipeline aún no llena, sube un archivo manual abajo y reemplazará al auto-generado
+              como fuente del reporte v2.
             </p>
           </div>
         </div>
