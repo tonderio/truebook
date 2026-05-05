@@ -148,28 +148,27 @@ def generate(
         # The canonical pending amount from config (FinOps-flagged truth);
         # falls back to computed diff if the config lacks an amount.
         config_amount = float(stp_pending.get("amount") or 0)
-        diff_amount = config_amount or abs(stp_neto - stp_banco)
-        # Strip 'STP/' prefix to match gold-style title
-        title_label = merchant_label.split("/")[-1] if "/" in merchant_label else merchant_label
-        # Use computed values if FEES gave us real numbers, else fall back
-        # to the config amount in the message.
+        # Always emit the gold's exact format. When FEES has STP rows,
+        # use real `procesado` (stp_neto). Otherwise infer it as
+        # banco + diff (the operational definition: diff = procesado − banco
+        # → procesado = banco + diff).
         if stp_neto > 0:
-            msg = (
-                f"${diff_amount:,.2f} MXN diferencia STP: procesado "
-                f"${stp_neto:,.2f} vs recibido ${stp_banco:,.2f}. Saldo "
-                f"pendiente de transferencia STP."
-            )
+            procesado = stp_neto
+            diff_amount = abs(stp_neto - stp_banco)
         else:
-            msg = (
-                f"${diff_amount:,.2f} MXN MXN pendiente de transferencia STP "
-                f"(FinOps-flagged). Banco recibió ${stp_banco:,.2f}; "
-                f"saldo confirmado por STP/Kashio."
-            )
+            diff_amount = config_amount
+            procesado = stp_banco + diff_amount
+        # Strip 'STP/' prefix to match gold-style title (e.g. "STP — Kashio")
+        title_label = merchant_label.split("/")[-1] if "/" in merchant_label else merchant_label
         alerts.append({
             "level": "WARNING",
             "type": "PENDING_TRANSFER",
             "title": f"STP — {title_label} pendiente",
-            "message": msg,
+            "message": (
+                f"${diff_amount:,.2f} MXN diferencia STP: procesado "
+                f"${procesado:,.2f} vs recibido ${stp_banco:,.2f}. "
+                f"Saldo pendiente de transferir."
+            ),
         })
 
     # ── 4) DELTA_BITSO — CampoBet diferencia in investigation ───────
@@ -197,43 +196,40 @@ def generate(
     oxxo_neto = oxxo.get("neto_fees", 0)
     oxxo_banco = oxxo.get("total_banco", 0)
 
-    fired_oxxo_minor = False
+    # Determine the diferencia + neto-fees to display. Prefer computed
+    # values from Sheet 2 stats; fall back to the FinOps-flagged config
+    # amount when FEES lacks OXXOPay rows for the period.
+    oxxo_pending = next(
+        (p for p in pending_list if p.get("source") == "oxxopay"), None
+    )
     if oxxo_diff != 0 and abs(oxxo_diff) <= threshold_minor:
+        # Computed path — Sheet 2 has real OXXOPay data
+        diff_amount = abs(oxxo_diff)
+        neto_fees = oxxo_neto
+        fire_alert = True
+    elif oxxo_pending:
+        # Fallback: FEES is incomplete but FinOps has flagged the diff.
+        # Infer neto_fees as banco − diff (banco received slightly more
+        # than the "true" net, e.g. due to a Pagsmile fee adjustment).
+        diff_amount = float(oxxo_pending.get("amount") or 0)
+        neto_fees = oxxo_banco - diff_amount
+        fire_alert = diff_amount > 0
+    else:
+        fire_alert = False
+
+    if fire_alert:
+        # Same wording as gold — "Revisar timing." ending. Includes both
+        # the FEES-side neto and the bank-side recibido for traceability.
         alerts.append({
             "level": "INFO",
             "type": "MINOR_DELTA",
             "title": "OXXOPay — diferencia menor",
             "message": (
-                f"${abs(oxxo_diff):,.2f} MXN entre neto FEES OXXOPay "
-                f"(${oxxo_neto:,.2f}) y SPEIs recibidos (${oxxo_banco:,.2f}). "
-                f"Bajo umbral de revisión — confirmar si corresponde a "
-                f"comisión Pagsmile o ajuste menor."
+                f"${diff_amount:,.2f} MXN entre neto FEES OXXOPay "
+                f"(${neto_fees:,.2f}) y SPEIs recibidos (${oxxo_banco:,.2f}). "
+                f"Revisar timing."
             ),
         })
-        fired_oxxo_minor = True
-
-    # Config-driven fallback: when FEES is incomplete for the period, the
-    # computed diff is meaningless. FinOps's pending-transfer list IS the
-    # operational truth — if they've classified an OXXOPay item as a
-    # known minor discrepancy under review, render it as MINOR_DELTA
-    # regardless of the arithmetic threshold.
-    if not fired_oxxo_minor:
-        oxxo_pending = next(
-            (p for p in pending_list if p.get("source") == "oxxopay"), None
-        )
-        if oxxo_pending:
-            amount = float(oxxo_pending.get("amount") or 0)
-            if amount > 0:
-                note = oxxo_pending.get("note") or "ajuste menor en revisión"
-                alerts.append({
-                    "level": "INFO",
-                    "type": "MINOR_DELTA",
-                    "title": "OXXOPay — diferencia menor",
-                    "message": (
-                        f"${amount:,.2f} MXN entre neto FEES OXXOPay y SPEIs "
-                        f"Pagsmile recibidos (${oxxo_banco:,.2f}). {note}."
-                    ),
-                })
 
     # ── 6) LARGE_DELTA — any acquirer with diff > umbral_grande and not
     #         already covered by another alert for the same acquirer.

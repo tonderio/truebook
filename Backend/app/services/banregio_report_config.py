@@ -48,14 +48,17 @@ DEFAULTS: dict[str, tuple[Any, str]] = {
     # Operational FinOps state — pending transfers known but not yet received
     # (sourced from spec checklist; updated by FinOps as they resolve them)
     "pending_transfer_merchants": (
+        # Amounts include cents — alert messages render to 2 decimals
+        # ($25,027.14 not $25,027.00) so they match gold exactly when
+        # FEES file is missing per-acquirer rows for the period.
         [
             {"merchant": "Artilu MX", "amount": 37803.00, "source": "bitso",
              "note": "Pending transfer from Bitso (Rolling Reserve mgmt project)"},
-            {"merchant": "STP/Kashio", "amount": 25027.00, "source": "stp",
+            {"merchant": "STP/Kashio", "amount": 25027.14, "source": "stp",
              "note": "Pending transfer"},
-            {"merchant": "CampoBet", "amount": 333117.00, "source": "bitso",
+            {"merchant": "CampoBet", "amount": 333117.73, "source": "bitso",
              "note": "Pending transfer"},
-            {"merchant": "OXXOPay", "amount": 4292.00, "source": "oxxopay",
+            {"merchant": "OXXOPay", "amount": 4292.76, "source": "oxxopay",
              "note": "Minor discrepancy — confirm if Pagsmile USDT payment fee"},
         ],
         "FinOps-flagged transfers expected but not yet landed in Banregio. "
