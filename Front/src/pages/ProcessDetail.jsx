@@ -292,6 +292,28 @@ export default function ProcessDetail() {
 
   const canRun = proc.status !== 'running'
 
+  // FEES file presence — derived from the already-loaded files query.
+  // Used to surface a banner + drive the in-card FEES upload zone.
+  // The banner only shows when:
+  //   - the run finished (status completed/reconciled)
+  //   - classifications were populated (coverage_pct >= 100% — i.e. the
+  //     pipeline ran cleanly and the OXXOPay/STP/Bitso net values
+  //     would be the missing piece if a FEES file were available)
+  //   - no FEES file is uploaded yet
+  const hasFeesFile = (files || []).some((f) => f.file_type === 'fees')
+  const ranSuccessfully =
+    (proc.status === 'completed' || proc.status === 'reconciled') &&
+    (proc.coverage_pct ?? 0) >= 100
+  const showFeesPendingBanner = ranSuccessfully && !hasFeesFile
+
+  // Spanish month name for the suggested filename in the banner copy
+  const SPANISH_MONTHS = [
+    'ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO',
+    'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE',
+  ]
+  const expectedFeesFilename =
+    `FEES_${SPANISH_MONTHS[(proc.period_month || 1) - 1]}_${proc.period_year}_FINAL.xlsx`
+
   return (
     <div className="p-8 space-y-6">
       {/* Header */}
@@ -358,6 +380,29 @@ export default function ProcessDetail() {
         </div>
       </div>
 
+      {/* FEES file pendiente — informational banner that nudges the
+          operator to upload FEES_{MES}_{AÑO}_FINAL.xlsx so the v2 report's
+          OXXOPay / STP / Bitso "Neto a Liquidar" columns get real numbers
+          (otherwise they show as $0 and the resumen total looks off). */}
+      {showFeesPendingBanner && (
+        <div className="card border border-amber-200 bg-amber-50 flex items-start gap-3">
+          <Info size={18} className="text-amber-700 shrink-0 mt-0.5" />
+          <div className="flex-1 text-sm">
+            <p className="font-medium text-amber-900 mb-0.5">
+              FEES file pendiente
+            </p>
+            <p className="text-amber-800 leading-snug">
+              El reporte v2 mostrará <span className="font-medium">$0 en Neto a Liquidar</span> para
+              OXXOPay / STP / Bitso hasta que subas el archivo{' '}
+              <code className="bg-amber-100 px-1 rounded text-[12px]">{expectedFeesFilename}</code>{' '}
+              en la zona de carga abajo. Una vez subido, haz clic en{' '}
+              <span className="font-medium">Re-clasificar</span> y luego en{' '}
+              <span className="font-medium">Reporte v2</span> para regenerar.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-3 gap-6">
         {/* Left: upload + files */}
         <div className="col-span-2 space-y-6">
@@ -375,6 +420,14 @@ export default function ProcessDetail() {
                 <CheckCircle2 size={12} /> Kushki se descargará automáticamente vía SFTP al ejecutar
               </p>
             )}
+
+            {/* FEES file (consolidated FinOps export, optional but
+                required for full per-acquirer cuadre in the v2 report) */}
+            <FileUpload
+              processId={id}
+              fileType="fees"
+              label={`FEES Tonder (${expectedFeesFilename})`}
+            />
 
             {files.length > 0 && (
               <div className="mt-2 space-y-1">
