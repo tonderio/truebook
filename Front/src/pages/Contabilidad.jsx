@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { processApi } from '../api/client'
 import {
   Plus, Loader2, Trash2, X, Calendar, Cpu, ChevronRight,
-  Search, ArrowRight, CheckCircle2,
+  Search, ArrowRight, CheckCircle2, FileWarning,
 } from 'lucide-react'
 import StatusBadge from '../components/ui/StatusBadge'
 import { format } from 'date-fns'
@@ -399,7 +399,26 @@ export default function Contabilidad() {
                       )}
                     </div>
                   </td>
-                  <td><StatusBadge status={p.status} /></td>
+                  <td>
+                    <div className="flex items-center gap-1.5">
+                      <StatusBadge status={p.status} />
+                      {/* FEES file pendiente — small amber icon when the
+                          run finished cleanly but no FEES file is uploaded;
+                          v2 report would show $0 for OXXOPay/STP/Bitso net.
+                          Click navigates straight to ProcessDetail where
+                          the upload zone + banner sit. */}
+                      {(p.status === 'completed' || p.status === 'reconciled') &&
+                       (p.coverage_pct ?? 0) >= 100 &&
+                       p.has_fees_file === false && (
+                        <span
+                          title="FEES file pendiente — sube FEES_{MES}_{AÑO}_FINAL.xlsx para el reporte v2"
+                          className="text-amber-600 hover:text-amber-700"
+                        >
+                          <FileWarning size={13} strokeWidth={2} />
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td>
                     {p.coverage_pct != null ? (
                       <div className="w-24">

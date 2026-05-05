@@ -29,6 +29,11 @@ class ProcessOut(BaseModel):
     reconciled_at: Optional[datetime] = None
     coverage_pct: Optional[float] = None
 
+    # True if a file with file_type='fees' has been uploaded to this
+    # process. Drives the FEES-pending banner / Contabilidad list badge.
+    # Computed by the list / get endpoints, not stored on the model.
+    has_fees_file: bool = False
+
     class Config:
         from_attributes = True
 

@@ -58,9 +58,28 @@ def create_process(
     return proc
 
 
+def _attach_has_fees_file(proc: AccountingProcess, has_fees: bool) -> ProcessOut:
+    """Build a ProcessOut from an AccountingProcess and set has_fees_file.
+
+    Pydantic's from_attributes mode pulls field values from the ORM
+    instance; we then set the computed has_fees_file flag (which doesn't
+    exist as a column on the model). Used by list / get endpoints below.
+    """
+    out = ProcessOut.model_validate(proc)
+    out.has_fees_file = has_fees
+    return out
+
+
 @router.get("/", response_model=List[ProcessOut])
 def list_processes(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return db.query(AccountingProcess).order_by(AccountingProcess.created_at.desc()).all()
+    procs = db.query(AccountingProcess).order_by(AccountingProcess.created_at.desc()).all()
+    # Pull all process_ids that have a FEES file in one query (no N+1)
+    fees_pids = {
+        pid for (pid,) in db.query(UploadedFile.process_id)
+        .filter(UploadedFile.file_type == "fees")
+        .distinct()
+    }
+    return [_attach_has_fees_file(p, p.id in fees_pids) for p in procs]
 
 
 @router.get("/{process_id}", response_model=ProcessOut)
@@ -68,7 +87,16 @@ def get_process(process_id: int, db: Session = Depends(get_db), current_user: Us
     proc = db.query(AccountingProcess).filter(AccountingProcess.id == process_id).first()
     if not proc:
         raise HTTPException(status_code=404, detail="Process not found")
-    return proc
+    has_fees = (
+        db.query(UploadedFile.id)
+        .filter(
+            UploadedFile.process_id == process_id,
+            UploadedFile.file_type == "fees",
+        )
+        .first()
+        is not None
+    )
+    return _attach_has_fees_file(proc, has_fees)
 
 
 @router.delete("/{process_id}")
