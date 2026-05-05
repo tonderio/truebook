@@ -5,10 +5,56 @@ Finds candidate Banregio movements that could correspond to Bitso deposits,
 and manages the match confirmation workflow.
 """
 import logging
+import math
 from datetime import date, timedelta
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
+
+
+# ── Defensive coercion helpers ──────────────────────────────────────────
+#
+# Banregio movements come from pandas-parsed DataFrames; a missing cell
+# arrives as a float NaN, which is *truthy* in Python and crashes any
+# downstream `unicodedata.normalize()` (the bug we hit on Apr 2026 in
+# auto_classifier — same defense applied here so the bitso_matcher path
+# can't surface the same class of issue when fields are missing).
+
+
+def _safe_str(v: Any) -> str:
+    """Coerce to a clean string. None / NaN / pure numeric → ''.
+
+    We don't want numeric values masquerading as text — they're never
+    useful for description / merchant / reference matching, and they
+    crash callers that pass them into normalize(). Real strings are
+    stripped; numeric strings are kept (e.g. clave_rastreo digits).
+    """
+    if v is None:
+        return ""
+    if isinstance(v, float) and math.isnan(v):
+        return ""
+    if isinstance(v, (int, float)):
+        # Pure numeric — not useful as text. Drop it.
+        return ""
+    return str(v).strip()
+
+
+def _safe_float(v: Any) -> float:
+    """Coerce to float. None / NaN / inf / parse errors → 0.0."""
+    if v is None:
+        return 0.0
+    if isinstance(v, (int, float)):
+        if math.isnan(v) or math.isinf(v):
+            return 0.0
+        return float(v)
+    try:
+        s = str(v).replace(",", "").replace("$", "").strip()
+        if not s:
+            return 0.0
+        f = float(s)
+        return 0.0 if math.isnan(f) or math.isinf(f) else f
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def find_candidates(
@@ -35,7 +81,10 @@ def find_candidates(
             movement_description, movement_amount, delta, date_distance_days, confidence}]
     """
     bitso_date = bitso_line.get("txn_date")
-    bitso_amount = float(bitso_line.get("net_amount", 0) or bitso_line.get("gross_amount", 0))
+    # _safe_float handles NaN / inf / strings / None — prevents the
+    # silent "matches nothing" failure when the API returns missing
+    # amounts that would otherwise pollute the comparison via NaN.
+    bitso_amount = _safe_float(bitso_line.get("net_amount")) or _safe_float(bitso_line.get("gross_amount"))
 
     if bitso_amount == 0:
         return []
@@ -48,12 +97,12 @@ def find_candidates(
             continue
 
         # Skip movements already classified as another acquirer (not unclassified/bitso)
-        cls = existing_classifications.get(idx, "unclassified")
+        cls = _safe_str(existing_classifications.get(idx)) or "unclassified"
         if cls not in ("unclassified", "bitso", "other"):
             continue
 
         # Only consider credit (abono) movements for deposits
-        credit = float(mov.get("credit", 0) or 0)
+        credit = _safe_float(mov.get("credit"))
         if credit <= 0:
             continue
 
@@ -82,8 +131,8 @@ def find_candidates(
 
         candidates.append({
             "banregio_movement_index": idx,
-            "movement_date": mov.get("date"),
-            "movement_description": mov.get("description", ""),
+            "movement_date": _safe_str(mov.get("date")),
+            "movement_description": _safe_str(mov.get("description")),
             "movement_amount": credit,
             "delta": round(credit - bitso_amount, 2),
             "date_distance_days": date_distance,
@@ -139,12 +188,18 @@ def build_adjustment_suggestion(
 
     Per spec QA-07: delta within tolerance ($1.00 default) → no suggestion.
     """
+    # Coerce defensively — callers may pass NaN / None / strings without
+    # realizing it (Bitso API can return missing fields, Banregio movements
+    # can have float NaN from pandas, etc.).
+    bitso_amount = _safe_float(bitso_amount)
+    banregio_amount = _safe_float(banregio_amount)
     delta = round(banregio_amount - bitso_amount, 2)
     if abs(delta) <= tolerance_amount:
         return None
 
     direction = "ADD" if delta > 0 else "SUBTRACT"
-    merchant_label = f" ({merchant_name})" if merchant_name else ""
+    merchant_clean = _safe_str(merchant_name)
+    merchant_label = f" ({merchant_clean})" if merchant_clean else ""
 
     return {
         "adjustment_type": "MANUAL_BITSO",
@@ -153,7 +208,7 @@ def build_adjustment_suggestion(
         "currency": "MXN",
         "affects": "received",
         "conciliation_type": "bitso_vs_banregio",
-        "merchant_name": merchant_name,
+        "merchant_name": merchant_clean or None,
         "adjustment_date": str(match_date) if match_date else None,
         "description": (
             f"Diferencia en cruce Bitso-Banregio{merchant_label}: "
