@@ -764,6 +764,124 @@ def section_6_anomalies(db, process, prior_findings: list[str]) -> tuple[bool, l
     return True, out  # this section is informational, never fails
 
 
+# ── Section 7 ─────────────────────────────────────────────────────────────
+
+
+def section_7_v2_report_freshness(db, process) -> tuple[bool, list[str]]:
+    """Detect a stale persisted v2 report file vs the current canonical
+    output of `builder.build_to_bytes`.
+
+    The Banregio Reconciliation Report v2 endpoint persists an audit
+    copy at `uploads/{process_id}/reports/RECONCILIACION_BANREGIO_*.xlsx`
+    every time it generates. If FinOps downloads that file and then the
+    code's spec evolves (e.g. the column-split from 17→18 cols we
+    shipped after April), the persisted copy goes stale — but there's
+    no signal in the UI / on the disk that the file is out of date.
+
+    This section regenerates the v2 workbook in-memory (via builder)
+    and diffs the current desglose-table column count + headers against
+    the persisted file. Mismatch → ❌ with a recommendation to regenerate.
+
+    No file is mutated — the current generation is pure-bytes via
+    `build_to_bytes`, never written to disk.
+    """
+    out = []
+    import io
+    import openpyxl
+
+    # Persisted file path (matches what banregio_report router writes)
+    base_dir = Path(__file__).resolve().parent.parent / "uploads" / str(process.id) / "reports"
+    persisted_files = list(base_dir.glob("RECONCILIACION_BANREGIO_*.xlsx")) if base_dir.exists() else []
+
+    if not persisted_files:
+        out.append(
+            f"ℹ No persisted v2 report found at `uploads/{process.id}/reports/`. "
+            f"Skipping freshness check — first generation will create one."
+        )
+        return True, out
+
+    # Load the persisted file's `Por Adquirente` desglose header
+    persisted_path = persisted_files[0]
+    out.append(f"Persisted v2 report: `{persisted_path.name}`")
+
+    try:
+        per_wb = openpyxl.load_workbook(persisted_path, data_only=True)
+        per_ws = per_wb["Por Adquirente"]
+    except Exception as exc:
+        out.append(f"⚠ Failed to read persisted report: `{type(exc).__name__}: {exc}`")
+        return False, out
+
+    # Find the desglose header row (col A == 'Comercio')
+    def _find_desglose_header(ws) -> tuple[int, list[str]] | None:
+        for r in range(1, min(ws.max_row, 80) + 1):
+            if ws.cell(r, 1).value == "Comercio":
+                hdrs = []
+                for c in range(1, ws.max_column + 1):
+                    v = ws.cell(r, c).value
+                    if v is None or v == "":
+                        break
+                    hdrs.append(str(v))
+                return r, hdrs
+        return None
+
+    persisted_hdr = _find_desglose_header(per_ws)
+
+    # Generate the canonical workbook in-memory and grab its desglose header
+    try:
+        from app.services.banregio_report_v2 import builder
+        canonical_bytes, _ = builder.build_to_bytes(db, process)
+        can_wb = openpyxl.load_workbook(io.BytesIO(canonical_bytes), data_only=True)
+        can_ws = can_wb["Por Adquirente"]
+        canonical_hdr = _find_desglose_header(can_ws)
+    except Exception as exc:
+        out.append(f"⚠ Failed to build canonical report: `{type(exc).__name__}: {exc}`")
+        return False, out
+
+    if persisted_hdr is None or canonical_hdr is None:
+        out.append("⚠ Could not locate `Comercio` header row in one of the workbooks — manual check required")
+        return False, out
+
+    persisted_cols = persisted_hdr[1]
+    canonical_cols = canonical_hdr[1]
+    cols_match = persisted_cols == canonical_cols
+    count_match = len(persisted_cols) == len(canonical_cols)
+
+    out.append("")
+    out.append(f"| Check | Persisted | Canonical | Result |")
+    out.append(f"|---|---:|---:|:---:|")
+    out.append(
+        f"| Desglose column count | {len(persisted_cols)} | {len(canonical_cols)} | "
+        f"{status_icon(count_match)} |"
+    )
+    out.append(
+        f"| Headers match exactly | {'see below' if not cols_match else 'identical'} | — | "
+        f"{status_icon(cols_match)} |"
+    )
+
+    if not cols_match:
+        out.append("")
+        out.append("Header diff (persisted vs canonical):")
+        out.append("")
+        out.append("| # | Persisted | Canonical |")
+        out.append("|---:|---|---|")
+        max_n = max(len(persisted_cols), len(canonical_cols))
+        for i in range(max_n):
+            p = persisted_cols[i] if i < len(persisted_cols) else "—"
+            c = canonical_cols[i] if i < len(canonical_cols) else "—"
+            marker = "✓" if p == c else "✗"
+            out.append(f"| {i+1} {marker} | `{p}` | `{c}` |")
+        out.append("")
+        out.append(
+            "**Recommendation**: regenerate the v2 report (POST "
+            f"`/api/processes/{process.id}/banregio-report-v2`, or click "
+            "'Reporte v2' in the UI). The persisted copy is from older code "
+            "and the column layout has since evolved."
+        )
+
+    out.append("")
+    return cols_match and count_match, out
+
+
 # ── orchestrator ──────────────────────────────────────────────────────────
 
 
@@ -810,11 +928,30 @@ def run_audit(process_id: int, output_path: Path, include_mongo: bool) -> bool:
             body.extend(content)
             body.append("")
 
-        # Section 6 always runs last and is informational
+        # Section 6 (informational) runs after the gated sections
         passed6, content6 = section_6_anomalies(db, process, prior_findings=[])
         body.append(f"## Section 6 — Anomaly registry  ℹ")
         body.append("")
         body.extend(content6)
+        body.append("")
+
+        # Section 7 (gated) — v2 report freshness check.
+        # Runs at the end because it depends on a complete pipeline state
+        # and isn't relevant unless the run is fully populated.
+        print(f"running Section 7 — v2 report freshness…")
+        try:
+            passed7, content7 = section_7_v2_report_freshness(db, process)
+        except Exception as e:
+            passed7 = False
+            content7 = [f"⚠ section raised: `{type(e).__name__}: {e}`"]
+            import traceback
+            content7.append("```")
+            content7.append(traceback.format_exc())
+            content7.append("```")
+        verdicts.append(("Section 7 — v2 report freshness", passed7))
+        body.append(f"## Section 7 — v2 report freshness  {status_icon(passed7)}")
+        body.append("")
+        body.extend(content7)
         body.append("")
 
         all_pass = all(p for _, p in verdicts)
