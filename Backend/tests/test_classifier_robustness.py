@@ -39,6 +39,7 @@ from app.services.bitso_matcher import (
     find_candidates,
 )
 from app.services.conciliation_engine import conciliate_kushki_vs_banregio
+from app.services.banregio_report_v2 import alert_generator
 
 
 # ── Adversarial input grid ──────────────────────────────────────────────
@@ -312,6 +313,102 @@ class TestBitsoMatcherFindCandidates:
             existing_matches=set(),
         )
         assert len(result) == 1
+
+
+class TestAlertGeneratorFeesFileMissing:
+    """Locks down the FEES_FILE_MISSING alert added in May 2026.
+
+    Fires only when:
+      - Coverage is 100% (run is operationally complete)
+      - No FEES file is uploaded for the process
+
+    Caller can pass `has_fees_file=True/False` to skip the DB lookup
+    (used in tests; production sheet_alertas.py lets it default to None
+    and queries UploadedFile).
+    """
+
+    @pytest.fixture
+    def db(self):
+        """Real DB session. The alert generator reads thresholds and
+        Bitso config from the reconciliation_config table — easier to
+        use the live DB (which has seeded defaults) than to mock the
+        whole chain. Read-only access; no commits."""
+        from app.database import SessionLocal
+        s = SessionLocal()
+        yield s
+        s.close()
+
+    def _make_process(self, year=2026, month=5):
+        class _P:
+            def __init__(s):
+                s.id = 99999  # arbitrary; not in DB, queries return empty
+                s.period_year = year
+                s.period_month = month
+        return _P()
+
+    def _empty_stats(self):
+        return {
+            "kushki": {}, "bitso": {}, "oxxopay": {}, "stp": {}, "unlimit": {},
+        }
+
+    def test_fires_when_no_fees_file_and_coverage_complete(self, db):
+        alerts = alert_generator.generate(
+            db=db,
+            process=self._make_process(month=5),
+            sheet2_stats=self._empty_stats(),
+            coverage_pct=100.0,
+            has_fees_file=False,
+        )
+        fees_alerts = [a for a in alerts if a["type"] == "FEES_FILE_MISSING"]
+        assert len(fees_alerts) == 1
+        a = fees_alerts[0]
+        assert a["level"] == "INFO"
+        assert "FEES file pendiente" in a["title"]
+        assert "FEES_MAYO_2026_FINAL.xlsx" in a["message"]
+
+    def test_does_not_fire_when_fees_file_present(self, db):
+        alerts = alert_generator.generate(
+            db=db,
+            process=self._make_process(),
+            sheet2_stats=self._empty_stats(),
+            coverage_pct=100.0,
+            has_fees_file=True,
+        )
+        fees_alerts = [a for a in alerts if a["type"] == "FEES_FILE_MISSING"]
+        assert fees_alerts == []
+
+    def test_does_not_fire_when_coverage_incomplete(self, db):
+        # Run isn't operationally complete yet; FEES file isn't the
+        # primary issue — COVERAGE_LOW will fire instead
+        alerts = alert_generator.generate(
+            db=db,
+            process=self._make_process(),
+            sheet2_stats=self._empty_stats(),
+            coverage_pct=42.0,
+            has_fees_file=False,
+        )
+        types = [a["type"] for a in alerts]
+        assert "FEES_FILE_MISSING" not in types
+        assert "COVERAGE_LOW" in types
+
+    def test_filename_uses_correct_month_per_period(self, db):
+        for month, expected in [
+            (1, "FEES_ENERO_2026_FINAL.xlsx"),
+            (3, "FEES_MARZO_2026_FINAL.xlsx"),
+            (4, "FEES_ABRIL_2026_FINAL.xlsx"),
+            (12, "FEES_DICIEMBRE_2026_FINAL.xlsx"),
+        ]:
+            alerts = alert_generator.generate(
+                db=db,
+                process=self._make_process(month=month),
+                sheet2_stats=self._empty_stats(),
+                coverage_pct=100.0,
+                has_fees_file=False,
+            )
+            fees_alerts = [a for a in alerts if a["type"] == "FEES_FILE_MISSING"]
+            assert len(fees_alerts) == 1
+            assert expected in fees_alerts[0]["message"], \
+                f"month={month}: expected {expected} in message"
 
 
 class TestKushkiVsBanregioMatcher:

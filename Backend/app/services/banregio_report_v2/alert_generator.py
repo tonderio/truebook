@@ -12,7 +12,8 @@ Each alert is a dict:
     {
       "level": "INFO" | "WARNING" | "INVESTIGATION" | "CRITICAL",
       "type":  "TIMING_CAJA" | "PENDING_TRANSFER" | "DELTA_BITSO" |
-               "MINOR_DELTA" | "LARGE_DELTA" | "COVERAGE_LOW",
+               "MINOR_DELTA" | "LARGE_DELTA" | "COVERAGE_LOW" |
+               "FEES_FILE_MISSING",
       "title": short string (col C),
       "message": longer explanation (col D),
     }
@@ -28,6 +29,7 @@ from sqlalchemy.orm import Session
 from app.services import banregio_report_config as cfg
 from app.services import kushki_intransit
 from app.models.process import AccountingProcess
+from app.models.file import UploadedFile
 
 
 # Severity ranking for sort order — higher = more urgent
@@ -72,6 +74,7 @@ def generate(
     sheet2_stats: dict[str, dict],
     coverage_pct: float,
     intransit_classification: dict | None = None,
+    has_fees_file: bool | None = None,
 ) -> list[dict]:
     """Build the ordered alert list for Sheet 3.
 
@@ -282,6 +285,44 @@ def generate(
                 f"antes de cerrar el período."
             ),
         })
+
+    # ── 8) FEES_FILE_MISSING ─────────────────────────────────────────
+    # Fires when classifications are populated (so the run is
+    # operationally complete) but no FEES file was uploaded. Without it
+    # the v2 report's per-acquirer "Neto a Liquidar" reads $0 for
+    # OXXOPay / STP / Bitso, leaving the Resumen Consolidado with a
+    # large unexplained delta. This is operational guidance, not a
+    # blocker — close can still promote to reconciled if the
+    # arithmetic delta is covered by approved adjustments.
+    if coverage_pct >= 100.0:
+        # Caller can pre-supply has_fees_file (e.g. sheet_alertas.py
+        # already needed to know this) to avoid the DB hit. None means
+        # "look it up myself".
+        if has_fees_file is None:
+            has_fees_file = (
+                db.query(UploadedFile.id)
+                .filter(
+                    UploadedFile.process_id == process.id,
+                    UploadedFile.file_type == "fees",
+                )
+                .first()
+                is not None
+            )
+        if not has_fees_file:
+            full_month_upper = full_month.upper()
+            alerts.append({
+                "level": "INFO",
+                "type": "FEES_FILE_MISSING",
+                "title": "FEES file pendiente",
+                "message": (
+                    f"No se ha subido el archivo "
+                    f"FEES_{full_month_upper}_{process.period_year}_FINAL.xlsx. "
+                    f"El reporte v2 mostrará $0 en Neto a Liquidar para "
+                    f"OXXOPay / STP / Bitso hasta que FinOps lo provea. "
+                    f"Sube el archivo y haz clic en Re-clasificar para "
+                    f"poblar los cuadres por adquirente."
+                ),
+            })
 
     # Preserve generation order — it already follows the spec's narrative
     # flow (timing context → operational pending items → investigation
