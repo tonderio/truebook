@@ -20,14 +20,14 @@ This is a living doc — when something breaks in a way you didn't expect, add a
    - **Kushki SRs** — daily `TONDER_YYYY-MM-DD.xlsx` files (one per business day; 20–22 per month). If `KUSHKI_SFTP_ENABLED=true` on Railway, the pipeline auto-downloads them, otherwise upload manually
    - **FEES file** (optional but recommended) — `FEES_{MES}_{AÑO}_FINAL.xlsx` from FinOps. Without it the v2 report's OXXOPay/STP/Bitso "Neto a Liquidar" column reads $0
 
-3. **Click "Ejecutar proceso"** (top-right). Pipeline runs through 9 stages:
+3. **Click "Ejecutar proceso"** (top-right). Pipeline runs through 9 stages with two sub-stages (5b and 8b):
    - 1–4: extract Tonder transactions/withdrawals/refunds from MongoDB, compute fees
    - 5: parse Kushki SRs (auto-downloaded or manually uploaded)
    - 5b: pull Bitso deposits via API (if `BITSO_API_ENABLED=true` and the API key covers the period)
    - 6: parse Banregio statement
-   - 7: run `fees`, `kushki_daily`, and `kushki_vs_banregio` conciliations
+   - 7: run `fees`, `kushki_daily`, and `kushki_vs_banregio` conciliations (Stage 7's `kushki_vs_banregio` runs without classifications and is overwritten by 8b)
    - 8: auto-classify all Banregio movements into 12 categories
-   - 8b: re-run `kushki_vs_banregio` with classifications populated
+   - 8b: re-run `kushki_vs_banregio` with classifications populated — supersedes Stage 7's placeholder so the cuadre actually matches by acquirer instead of by amount alone
    - 9: generate alerts
 
 4. **Wait for status `completed`** (1–3 minutes typical). Coverage should be `100%` and the Re-clasificar / FEES-pendiente badges should be calm.
@@ -82,7 +82,7 @@ Two causes:
 
 ### 2.4 "kushki_vs_banregio shows 0 matches"
 
-Was a real bug as of commit `d24d88b` (now fixed). If you see this on a run from BEFORE that commit:
+Was a real bug, fixed May 2026. If you see this on a run from before then:
 - Click `Re-clasificar` — Stage 8b's classification-aware matcher will populate matches correctly.
 - Then regenerate v2 report.
 
@@ -250,6 +250,9 @@ alembic upgrade head            # local
 | `BITSO_API_KEY` / `BITSO_API_SECRET` | SPEI v2 API |
 | `BITSO_API_ENABLED` | `true` to enable Stage 5b |
 | `KUSHKI_SFTP_ENABLED` | `true` to auto-download Kushki SRs |
+| `KUSHKI_SFTP_HOST` | Kushki SFTP server hostname (required if SFTP enabled) |
+| `KUSHKI_SFTP_USERNAME` | Kushki SFTP user (required if SFTP enabled) |
+| `KUSHKI_SFTP_PRIVATE_KEY` | Inline private key OR path via `KUSHKI_SFTP_PRIVATE_KEY_PATH` |
 
 ### 5.3 Rotating after a handoff
 
@@ -287,9 +290,15 @@ Mongo `status` is mixed-case (`Success` AND `SUCCESS`). Always `$toLower` it.
 
 ### 6.5 Banregio classifier
 
-12 movement types, CLABE-first detection. Full reference: `~/.claude/projects/-Users-yuyo/memory/truebook_banregio_labels.md`.
+12 movement types, CLABE-first detection. Source of truth lives in
+`Backend/app/services/auto_classifier.py` — `CLABE_RULES` (Tier 1) and
+`KEYWORD_RULES` (Tier 3) are the two lists you'll edit when a new
+Banregio statement format drops. See `tests/test_classifier_robustness.py`
+for the canonical examples per category.
 
-When a new Banregio statement format drops, expect 1–2% of movements to land as `unclassified` — add new keyword/CLABE rules to `auto_classifier.py` and run `/reclassify` (no full pipeline re-run needed).
+When a new format ships, expect 1–2% of movements to land as
+`unclassified` — add new keyword/CLABE rules to `auto_classifier.py`
+and run `/reclassify` (no full pipeline re-run needed).
 
 ### 6.6 Spanish in UI, English in code
 
