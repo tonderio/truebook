@@ -152,10 +152,29 @@ def conciliate_kushki_vs_banregio(
     kushki_result: Dict[str, Any],
     banregio_result: Dict[str, Any],
     tolerance: float = DEFAULT_TOLERANCE,
+    classifications: Dict[int, str] | None = None,
 ) -> Dict[str, Any]:
     """
-    Cross Kushki Column I (net_deposit per day) vs Banregio Column H (deposit_ref).
-    Match by amount within tolerance.
+    Cross Kushki SR daily net_deposits against Banregio credits classified
+    as `kushki_acquirer`. Match by amount within tolerance.
+
+    Inputs:
+      kushki_result["daily_summary"]: list of {date, net_deposit, …}
+      banregio_result["movements"]: list of {date, description, credit, debit, …}
+      classifications: {movement_index → classification_string}
+        When provided, only `kushki_acquirer` credits are eligible matches —
+        prevents false positives where a non-Kushki SPEI happens to share an
+        amount with a Kushki settlement.
+
+    Falls back through three sources for the Banregio side, in priority order:
+      1. classifications (preferred — semantically correct)
+      2. banregio_result["deposit_column"] (legacy, position-7 from parser)
+      3. banregio_result["movements"][*].credit (last resort, all credits)
+
+    The previous implementation used only #2, which was always-empty for the
+    March 2026 Banregio Excel because column index 7 was a non-amount column.
+    Kushki vs Banregio always returned 0 matches silently. See the audit
+    Section 3.3 results in docs/audits/2026_03_process5.md for the trace.
     """
     # Kushki side: list of {date, net_deposit}
     kushki_deposits = [
@@ -164,12 +183,33 @@ def conciliate_kushki_vs_banregio(
         if float(r.get("net_deposit", 0)) > 0
     ]
 
-    # Banregio side: list of deposit amounts from column H
-    banregio_deposits = [
-        {"amount": float(a), "matched": False}
-        for a in banregio_result.get("deposit_column", [])
-        if float(a) > 0
-    ]
+    # Banregio side — choose the most specific source available
+    movements = banregio_result.get("movements") or []
+    if classifications is not None and movements:
+        # Preferred: only kushki_acquirer-classified credits
+        banregio_deposits = [
+            {"amount": float(m.get("credit") or 0), "matched": False, "source": "classified"}
+            for idx, m in enumerate(movements)
+            if classifications.get(idx) == "kushki_acquirer"
+            and float(m.get("credit") or 0) > 0
+        ]
+    elif banregio_result.get("deposit_column"):
+        # Legacy: positional column-H amounts from the parser
+        banregio_deposits = [
+            {"amount": float(a), "matched": False, "source": "deposit_column"}
+            for a in banregio_result.get("deposit_column", [])
+            if float(a) > 0
+        ]
+    elif movements:
+        # Last resort: every positive credit. Will produce false positives
+        # if non-Kushki SPEIs share amounts with Kushki settlements.
+        banregio_deposits = [
+            {"amount": float(m.get("credit") or 0), "matched": False, "source": "all_credits"}
+            for m in movements
+            if float(m.get("credit") or 0) > 0
+        ]
+    else:
+        banregio_deposits = []
 
     matched = []
     unmatched_kushki = []

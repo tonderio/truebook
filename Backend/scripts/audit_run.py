@@ -499,18 +499,21 @@ def section_3_conciliation(db, process) -> tuple[bool, list[str]]:
     bg = db.query(BanregioResult).filter_by(process_id=process.id).first()
     vs_cr = by_type.get("kushki_vs_banregio")
     if kr and bg and vs_cr:
-        # Independent re-run using engine
+        # Independent re-run using engine. Mirror the pipeline's Stage 8b
+        # path: pass classifications so the matcher can pre-filter to
+        # `kushki_acquirer` credits only (matches what's stored).
         tolerance = get_tolerance(db)
-        # banregio_result needs deposit_column — extract from movements (column H)
-        deposit_column = []
-        for m in bg.movements or []:
-            dc = m.get("deposit_ref") or m.get("deposit_column")
-            if dc and to_float(dc) > 0:
-                deposit_column.append(to_float(dc))
+        cls_rows = (
+            db.query(BanregioMovementClassification)
+            .filter_by(process_id=process.id)
+            .all()
+        )
+        cls_map = {c.movement_index: c.classification for c in cls_rows}
         rerun = conciliate_kushki_vs_banregio(
             {"daily_summary": kr.daily_summary or []},
-            {"deposit_column": deposit_column},
+            {"movements": bg.movements or []},
             tolerance=tolerance,
+            classifications=cls_map if cls_map else None,
         )
         stored_matched = len(vs_cr.matched or [])
         stored_uk = len(vs_cr.unmatched_kushki or [])

@@ -244,12 +244,59 @@ def reclassify_process(
             f"{coverage_stats['total_movements']} ({coverage_stats['coverage_pct']}% "
             f"cobertura). {coverage_stats['unclassified']} sin clasificar.",
         )
+
+        # Re-run the kushki_vs_banregio cuadre with the fresh classifications
+        # — Stage 8b in the pipeline does this automatically; we mirror it
+        # here so /reclassify keeps the cuadre in sync without a full re-run.
+        kvb_summary = None
+        kr = db.query(KushkiResult).filter_by(process_id=process_id).first()
+        if kr:
+            try:
+                tolerance = conciliation_engine.get_tolerance(db)
+                cls_map = {c["movement_index"]: c["classification"] for c in classifications}
+                kvb_v2 = conciliation_engine.conciliate_kushki_vs_banregio(
+                    {"daily_summary": kr.daily_summary or []},
+                    {"movements": movements},
+                    tolerance=tolerance,
+                    classifications=cls_map,
+                )
+                db.query(ConciliationResult).filter(
+                    ConciliationResult.process_id == process_id,
+                    ConciliationResult.conciliation_type == "kushki_vs_banregio",
+                ).delete()
+                db.add(ConciliationResult(
+                    process_id=process_id,
+                    conciliation_type="kushki_vs_banregio",
+                    matched=kvb_v2["matched"],
+                    differences=kvb_v2["differences"],
+                    unmatched_kushki=kvb_v2["unmatched_kushki"],
+                    unmatched_banregio=kvb_v2["unmatched_banregio"],
+                    total_conciliated=kvb_v2["total_conciliated"],
+                    total_difference=kvb_v2["total_difference"],
+                ))
+                db.commit()
+                kvb_summary = {
+                    "matched": len(kvb_v2["matched"]),
+                    "unmatched_kushki": len(kvb_v2["unmatched_kushki"]),
+                    "unmatched_banregio": len(kvb_v2["unmatched_banregio"]),
+                }
+            except Exception as e:
+                logger.exception(
+                    "Reclassify: kushki_vs_banregio re-cuadre failed for process %d",
+                    process_id,
+                )
+                # Don't fail the whole endpoint — classifications are still good
+                _log(db, process_id, "conciliation",
+                     f"Re-cuadre Kushki↔Banregio falló — {type(e).__name__}: {e}",
+                     "error")
+
         return {
             "message": "Reclassification complete",
             "coverage_pct": coverage_stats["coverage_pct"],
             "classified": coverage_stats["classified"],
             "total_movements": coverage_stats["total_movements"],
             "unclassified": coverage_stats["unclassified"],
+            "kushki_vs_banregio": kvb_summary,
         }
     except Exception as e:
         logger.exception("Reclassify failed for process %d", process_id)
@@ -849,6 +896,61 @@ def _run_full_process(process_id: int):
                 "Saltando Stage 8 — no hay movimientos Banregio para clasificar",
                 "warning",
             )
+
+        # ── Stage 8b: Re-run kushki_vs_banregio with classifications ─────
+        # The Stage 7 invocation runs without classifications (they don't
+        # exist yet) and historically used the parser's `deposit_column`
+        # which was always-empty for the Banregio Excel format → 0 matches
+        # silently. Now that classifications are populated we re-run the
+        # cuadre with `kushki_acquirer`-only filtering, which is what the
+        # spec actually intends. Overwrites the Stage 7 placeholder row.
+        if banregio_data and movements_to_classify:
+            try:
+                cls_rows = (
+                    db.query(BanregioMovementClassification)
+                    .filter_by(process_id=process_id)
+                    .all()
+                )
+                cls_map = {c.movement_index: c.classification for c in cls_rows}
+                kvb_v2 = conciliation_engine.conciliate_kushki_vs_banregio(
+                    kushki_data,
+                    {"movements": movements_to_classify, "deposit_column": banregio_data.get("deposit_column", [])},
+                    tolerance=tolerance,
+                    classifications=cls_map,
+                )
+                # Replace the Stage 7 placeholder
+                db.query(ConciliationResult).filter(
+                    ConciliationResult.process_id == process_id,
+                    ConciliationResult.conciliation_type == "kushki_vs_banregio",
+                ).delete()
+                db.add(ConciliationResult(
+                    process_id=process_id,
+                    conciliation_type="kushki_vs_banregio",
+                    matched=kvb_v2["matched"],
+                    differences=kvb_v2["differences"],
+                    unmatched_kushki=kvb_v2["unmatched_kushki"],
+                    unmatched_banregio=kvb_v2["unmatched_banregio"],
+                    total_conciliated=kvb_v2["total_conciliated"],
+                    total_difference=kvb_v2["total_difference"],
+                ))
+                db.commit()
+                _log(
+                    db, process_id, "conciliation",
+                    f"Cuadre Kushki↔Banregio: {len(kvb_v2['matched'])} matched, "
+                    f"{len(kvb_v2['unmatched_kushki'])} unmatched_kushki, "
+                    f"{len(kvb_v2['unmatched_banregio'])} unmatched_banregio",
+                )
+            except Exception as e:
+                logger.exception("Stage 8b kushki_vs_banregio failed for process %d", process_id)
+                _log(
+                    db, process_id, "conciliation",
+                    f"Stage 8b cuadre falló — {type(e).__name__}: {e}",
+                    "error",
+                )
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
 
         # ── Stage 9: Generate alerts ───────────────────────────────────────
         _set_stage(db, proc, "alerting", 96)

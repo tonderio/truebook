@@ -38,6 +38,7 @@ from app.services.bitso_matcher import (
     build_adjustment_suggestion,
     find_candidates,
 )
+from app.services.conciliation_engine import conciliate_kushki_vs_banregio
 
 
 # ── Adversarial input grid ──────────────────────────────────────────────
@@ -311,6 +312,80 @@ class TestBitsoMatcherFindCandidates:
             existing_matches=set(),
         )
         assert len(result) == 1
+
+
+class TestKushkiVsBanregioMatcher:
+    """Locks down the Stage 8b kushki↔banregio cuadre — the bug we shipped
+    in commit (this one): the matcher now accepts a `classifications` map
+    and pre-filters Banregio credits to `kushki_acquirer`-classified rows
+    only, instead of relying on the parser's `deposit_column` (which was
+    silently empty for the Banregio Excel format and caused 0 matches)."""
+
+    def _kushki_days(self, *amounts):
+        return {"daily_summary": [
+            {"date": f"2026-03-{i:02d}", "net_deposit": a}
+            for i, a in enumerate(amounts, start=2)
+        ]}
+
+    def _banregio_movs(self, *triples):
+        # triples = (credit, classification_or_None)
+        return [
+            {"date": f"2026-03-{i:02d}", "credit": credit, "debit": 0,
+             "description": "test"}
+            for i, (credit, _) in enumerate(triples, start=2)
+        ]
+
+    def test_classifications_filter_to_kushki_acquirer(self):
+        """When classifications provided, only kushki_acquirer credits match."""
+        kushki = self._kushki_days(100.0, 200.0)
+        movs = [
+            {"date": "2026-03-02", "credit": 100.0, "debit": 0, "description": "kushki dep"},
+            {"date": "2026-03-02", "credit": 200.0, "debit": 0, "description": "bitso dep"},  # same amount, different acq
+            {"date": "2026-03-03", "credit": 200.0, "debit": 0, "description": "kushki dep"},
+        ]
+        cls = {0: "kushki_acquirer", 1: "bitso_acquirer", 2: "kushki_acquirer"}
+        result = conciliate_kushki_vs_banregio(
+            kushki, {"movements": movs}, classifications=cls,
+        )
+        assert len(result["matched"]) == 2  # both kushki days matched, bitso row ignored
+        assert len(result["unmatched_kushki"]) == 0
+        assert len(result["unmatched_banregio"]) == 0
+
+    def test_no_classifications_falls_back_to_deposit_column(self):
+        kushki = self._kushki_days(100.0)
+        result = conciliate_kushki_vs_banregio(
+            kushki, {"deposit_column": [100.0, 50.0]},
+        )
+        # Legacy path: matches 100, 50 stays unmatched
+        assert len(result["matched"]) == 1
+        assert len(result["unmatched_banregio"]) == 1
+
+    def test_no_deposit_column_falls_back_to_all_credits(self):
+        """When neither classifications nor deposit_column is present,
+        use all positive credits as a last resort."""
+        kushki = self._kushki_days(100.0)
+        movs = [
+            {"date": "2026-03-02", "credit": 100.0, "debit": 0, "description": ""},
+            {"date": "2026-03-03", "credit": 0, "debit": 50, "description": ""},  # debit only, skipped
+        ]
+        result = conciliate_kushki_vs_banregio(
+            kushki, {"movements": movs},
+        )
+        assert len(result["matched"]) == 1
+
+    def test_empty_classifications_falls_through_to_legacy(self):
+        """Empty dict (vs None) for classifications should still work —
+        the matcher falls through to deposit_column / movements."""
+        kushki = self._kushki_days(100.0)
+        result = conciliate_kushki_vs_banregio(
+            kushki,
+            {"movements": [{"credit": 100.0, "debit": 0, "description": "x"}]},
+            classifications={},  # empty — no kushki_acquirer match
+        )
+        # When classifications is empty dict, the kushki_acquirer filter
+        # excludes everything → no matches
+        assert len(result["matched"]) == 0
+        assert len(result["unmatched_kushki"]) == 1
 
 
 class TestBitsoMatcherBuildAdjustment:
